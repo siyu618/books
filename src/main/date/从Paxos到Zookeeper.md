@@ -238,4 +238,131 @@
 3.2 Hyperspace
 
       
-      
+** Chapter 4 Zookeeper与Paxos**
+
+4.1 初识Zookeeper
+
+4.1.1 Zookeeper介绍
+   * 典型的分布式数据一致性解决方案：可以实现数据发布/订阅、负载均衡、命名服务、分布式协调/通知、集群管理、Master选举、分布式锁和分布式队列等功能。
+   * 保证分布式一致性
+      * 顺序一致性
+      * 原子性
+      * 单一视图
+      * 可靠性
+      * 实时性
+   * 设计目标
+      1. 简单的数据模型
+      1. 可以构建集群
+      1. 顺序访问
+      1. 高性能
+
+4.1.2 Zookeeper从何而来
+   * Yahoo
+
+4.1.3 Zookeeper的基本概念
+   * 集群角色
+      * 没有采用典型的Master/Slave      
+      * 引入了Leader、Follower和Observer
+         * Observer不参与Leader选举过程，也不参与“过半写成功”策略
+   * 会话（Session）
+      * TCP连接，默认端口2181
+      * SessionTimeout
+   * 数据节点（ZNode）
+      * 机器节点 + 数据节点
+      * ZNode tree （/foo/path）
+      * 持久节点 + 临时节点
+         * 顺序节点：SEQUENTIAL
+   * 版本
+      * version：当前ZNode版本
+      * cversion：当前ZNode子节点的版本
+      * aversion：当前ZNode的ACL版本
+   * Watcher
+      * 事件监听器
+   * ACL
+      * CREATE
+      * READ
+      * WRITE
+      * DELETE
+      * ADMIN
+
+4.1.4 为什么选择Zookeeper
+   * 应用广泛、开源
+
+4.2 Zookeeper与ZAB协议
+
+4.2.1 ZAB协议
+   * Zookeeper没有完全采用Paxos算法，而是使用了一种称为Zookeeper Atomic Broadcast（ZAB）的协议作为其数据一致性的核心算法
+   * ZAB的核心是定义了对于那些会改变Zoookeeper服务数据状态的事务请求的处理方式
+      * 所有事务请求必须由一个全局唯一的服务器来协调处理，这样的服务器被称为Leader服务器，而余下的其他服务器则称为Follower服务器。Leader服务器负责讲一个客户端事务请求转换成一个事务Proposal（提议），并将该Proposal分发给急群众的所有Follower服务器。之后Leader服务器需要等待所有Follower服务器的反馈，一旦草果半数的Follower服务器进行了正确的反馈后，那么Leader就会再次向所有的Follower服务器分发Commit消息，要求其将前一个Proposal进行提交。
+
+4.2.2 协议介绍
+   * 两种基本模式：消息广播和崩溃恢复
+   * 消息广播
+      * 基于TCP协议
+      * 二阶段提交
+      * 每个事务有ZXID
+      * Leader服务器为每个Follower分配一个队列，并根据FIFO进行发送。
+      * Follower服务器在接收到这个事务proposal之后，会首先将其以事务日志的形式写入到本地磁盘，并且在成功写入后反馈给Leader服务器ACK响应
+      * Leader服务器若收到超过半数的ACK（包括自己的）之后，leader会广播一个Commit消息给所有的Follower服务器以通知其进行事务提交。Leader也会完成事务提交
+      * 而每一个Follower服务器在接收到Commit之后也会完成对事务的提交。
+   * 崩溃恢复
+      * Leader服务器崩溃，需要高效可靠的选举算法
+      * Leader需要快速让Leader知道自己是Leader，同时也需要让其他机器感知新的Leader
+      * 基本特性
+         * ZAB协议需要确保哪些已经在Leader服务器上提交的事务最终被所有服务器都提交
+         * ZAB协议需要确保丢弃哪些只在Leader服务器上被提出的事务 
+         * 拥有最大事务编号的机器被选为Leader
+            * 保证有所有的已经提交的提案
+               * 可以省去Leader服务器检查Proposal的提交和丢弃工作的这一步操作
+      * 数据同步
+         * 完成Leader选举之后，正式工作之前会确认事务日志中所有的Proposal是否已经被过半的Follower提交
+         * Leader服务器会为每一个Follower准备一个队列，并将那些没有被各个Follower服务器同步的事务以Proposal的形式逐步发送给各个Follower，并且在每一个Proposal消息之后再发送一个Commit消息，表示该事务已经被提交。等到Follower服务器将所有其尚未同步的事务Proposal都从Leader服务器上同步过来并成功应用到本地数据库中后，Leader服务器就会将该Follower加入到真正可用的Foloower列表中，并开始其后的流程。
+      * 如何处理需要被丢弃的事务
+         * 依赖于ZXID的设计
+            * ZXID 64位：低32位是一个简单的单调递增的计数器，而高32位代表leader周期的epoch编号，每当一个选举产生一个新的leader，会取其最大的ZXID的epoch然后加1作为新的epoch号，并将低32位清零
+            * 当拥有就的epoch的机器启动时，不能成为Leader，故而成为Follower
+            * 同时leader服务器会根据自己最后被提交的Proposal来和Follower服务器的Proposal进行对比，对比的结果当然是Leader会要求Follower进行一个回退操作，会退到一个确实已经被急群众过半机器提交的最新的事务Proposal。
+
+4.2.3 深入ZAB协议
+   * 系统模型
+      * 完整性（Integrity）
+      * 前置性（Prefix）
+   * 问题描述
+      * 主进程周期： epoch， readny（） 
+      * 事务：transactions(v,z), Z = <epoch, count>
+   * 算法描述
+      * 包括消息广播和崩溃恢复两个阶段，进一步可以分解为：发现（Discovery）、同步（Synchronization）和广播（Broadcast）阶段
+      * 阶段1 发现： 主要就是Leader选举过程，用于多个分布式进程中选出主进程，准Leader的Follower的工作流程分别如下
+         * F.1.1 Follower F将自己最后接受的事务Proposal的epoch值CEPOCH（处理过的最后一个事务的）发送给准Leader
+         * L.1.1 当接收到来自过半Follower的CEPOCH消息后，准Leader L会生成NEWEPOCH消息给这些过半的Follower： e_new = 最大Epoch + 1
+         * F.1.2 当Follower接收到来自Leader L的NEWEPOCH消息后，如果其检测到当前的CEPOCH值小于e_new，就将最后处理的事务epoch设置为e_new，同时向这个准Leader反馈ACK消息。 在这个反馈消息ACK-E(F, h))中包含了而当前这个Follower的epoch 以及该该Follower的历史事务Proposal集合：Hf
+         * Leader选择一个Follower， 使其作为初始化集合I
+      * 阶段2 同步：
+         * L.2.1 Leader L会将e_new和I以 NEW_LEADER(e_new, I)消息的形式发送给所有Quroum中的Follower
+         * F.2.1 当Follower接受到来自Leader L的NEW_LEADER消息后，Follower发现CEPOCH（e） 和 e_new 不同，则直接进入下一轮循环；如果相同，那么Follower就会执行事务应用操作。Follow都会接受，最后Follower会反馈给Leader，表明自己已经接受并处理所有I中的Proposal
+         * L.2.2 当Leader接收到来自国安Follower针对NEWLEADER的反馈消息后，就会想所有的Follower发送Commit消息，至此，LEader完成阶段2
+         * F.2.2 当Follower收到来自Leader的Commit消息后，就会依次处理并提交所有在I中未处理的事务。至此，Follower完成阶段2
+      * 阶段3 广播
+         * L.3.1 Leader L接收到来自客户端新的事务请求后，会生成对应的事务Proposal，并根据ZXID的顺序想所有Follower发送提案<e, <v,z>>
+         * F.3.1 Follower 根骨消息接收的先后次序来处理这些来自Leader的事务Proposal，并将它们追加到h中去，之后在反馈给Leader
+         * L.3.2 当Leader接收到来自过半Follower针对事务Proposal的ACK消息后，就会发送Commit消息给所有的Follower，要求它们进行事务的提交
+         * F.3.2 当Follower F接收到来自Leader的Commit消息之后，就会开始提价哦事务Proposal。需要注意的是赐个FollowerF必定已经提交了先前的事务
+   * 运行时分析
+      * 每一个进程的可能的三种状态
+         * LOOKING ： leader选举阶段
+         * FOLLOWING： Follower服务器和Leader保持同步状态
+         * LEADING：Lader服务器作为主进程领导状态
+      * LEADER定义如下：
+         * 如果一个准Leader 接受到来自过半的Follower进程针对L的NEWLEADER反馈消息，那么L就成为了周期e的Leader
+
+4.2.4 ZAB 与PAXOS算法的联系与区别
+   * 联系
+      1. 两者都纯在一个类似于Leader进程的角色，由其负责协调多个Follower进程的运行
+      1. Leader进程都会等待超过半数的Follower做出正确的反馈后，才会将一个提案进行提交
+      1. 在ZAB协议中，每个Proposal中都包含了一个epoch值，用来代表当前Leader周期，在Paxos中，同样存在一个一个标识，叫Ballot
+   * 不同
+      1. paxos：读 + 写
+      1. ZAB增加了同步阶段
+   * 本质区别
+      1. ZAB：够条件高可用主备系统
+      1. PAXOS：构建一个分布式的一致性状态及系统      
