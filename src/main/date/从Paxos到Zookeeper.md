@@ -366,3 +366,36 @@
    * 本质区别
       1. ZAB：够条件高可用主备系统
       1. PAXOS：构建一个分布式的一致性状态及系统      
+      
+      
+** Chapter 5 : 使用Zookeeper**
+   * 部署与运行
+      * 系统环境
+      * 集群与单机
+         * zoo.cfg：myid
+      * 运行
+         * 
+   * 客户端脚本
+      * zkCli.sh -server ""
+      * create/ls/get/set/delete
+   * java api
+      * zookeeper：同步异步，重新注册，较为繁琐
+      * ZkClient : 已经不更新
+      * Curator
+         * 使用场景
+            * 事件监听：
+               * NodeCache：监听zookeeper数据节点本身的变化，也可以监听节点是否存在
+               * PathChildrenCache：监听zk数据节点的子节点的变化情况
+            * Mater 选举： LeaderSelect
+            * 分布式锁：InterProcessMutex
+            * 分布式计数器：DistributedAtomicInteger
+            * 分布式barrier：DistributedBarrier， DistributedDoubleBarrier
+            * 工具：
+               * ZKPaths
+               * EnsurePath：Deprecated
+               * Test: **未找到**
+                  * TestingServer
+                  * TestingCluster
+
+      
+      
