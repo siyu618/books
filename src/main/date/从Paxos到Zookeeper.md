@@ -240,7 +240,7 @@
 3.2 Hyperspace
 
       
-** Chapter 4 Zookeeper与Paxos**
+**Chapter 4 Zookeeper与Paxos**
 
 4.1 初识Zookeeper
 
