@@ -333,4 +333,383 @@ redis 设计与实现
    * redis会共享值为0到9999的字符串对象
 
 8.10 对象的空转时长
+   * lru:22 记录了对象的 最后一次被访问的时间 #object idletime 命令不会更新该时间
+   * 空转时长 = 当前时间 - lru
 
+### 第二部分：单机数据库的实现 ###
+
+***第9张：数据库***
+
+9.1 服务器中的数据库
+   * redisServer
+   ```
+   typedef struct redisServer {
+       redisDb *db;  // 数组，保存服务器中的所有数据库
+       int dbnum;    // 服务器的数据库数量
+   } redisServer;
+   ```
+
+9.2 切换数据库   
+   * cmd： SELECT 0 # default is 0
+   * redisClient中保存了目标数据库的信息
+   ```
+   typedef struct redisClient {
+      redisDb *db; // 记录客户端当前在使用的数据库
+   } redisClient;
+   ```
+
+9.3 数据库键空间
+   * redisDb
+   	```
+   	typedef struct redisDb {
+   	    dict *dict;
+   	} redisDb;
+   	```
+   * 操作
+      * 添加：SET
+      * 删除：DEL
+      * 更新：SET、HSET
+      * 取值：GET、HGET
+      * 其他：FLUSHDB
+   * 读写键空间的维护
+      * 读取一个键之后，会根据键是否存在来更新服务器的键空间命中次数（hit）和不命中次数（miss），可在info stats中查看
+      * 读取一个键之后，会更新键的LRU时间，可以计算出键的空闲时间
+      * 读取一个键的时候发现键已过期则先删除该键，然后执行后续操作
+      * 如果有客户端使用watch命令监视了某个键，那么服务器在对键修改之后会将这个键标记为脏（dirty），从而让事务程序知道该键已经修改过
+      * 服务器每次修改键之后，都会对脏（dirty）键计数器+1，该计数器会触发服务器的持久化以及复制操作
+      * 如果服务器开启了数据控通知功能，那么在对键进行修改之后，服务器将按照配置发送相应的数据库通知。
+
+9.4 设置键的生存时间和过期时间
+   * 设置过期时间
+      * EXPIRE <key> <ttl>
+      * PEXPIRE <key> <ttl>
+      * EXPIREAT <key> <timestamp>
+      * PEXPIREAT <key> <timestamp>
+   * 保存过期时间
+      * redisDb中的过期字典，保存键的过期时间
+      ```
+      typedef struct redisDb {
+         dict *expires; // map<string, long long>
+      } redisDb;
+      ```
+   * 移除过期时间
+      * PERSIST <key>； // 从redisDb.expireDB 中移除，如果有的话
+   * 计算并返回剩余生存时间
+   * 过期键的判定
+
+9.5 过期键的删除
+   * 常见的删除策略
+      1. 定时删除：在设置建的过期时间是，创建一个timer，时间到的时候立即删除
+      1. 惰性删除：放任键过期不管，但每次从键空间获取时，都检查键是否过期，如果过期就删除，没有过期则返回
+      1. 定期删除：每个一段时间，程序就对数据库进行一次检查，删除里面的键。至于要删除多少键和检查多少数据库由算法决定。
+   * 定时删除 
+      * 是主动删除
+      * 对内存友好，对CPU不友好
+   * 惰性删除
+      * 是被动删除
+      * 对CPU友好，对内存不友好
+      * 可能会有空间一直得不到释放
+   * 定期删除
+      * 是前面两者的整合和折中
+         * 定期删除策略每个一段时间执行一次删除过期键操作，通过限制每次操作的时长和批量练减少删除操作对cpu时间的影响
+         * 有效减少了内存浪费
+      * 难点
+         * 时长
+         * 频率
+
+9.6 redis的过期键删除策略
+   * redis使用惰性删除和定期删除两种策略
+   * expiredIfNeeded
+   * 定期删除策略的实现
+      * 策略：redis.c/activeExpireCycle函数实现
+      * 每当服务周期性操作redis.c/serverCron函数执行时activeExpireCycle就会被调用
+
+9.7  AOF、RDB和复制功能对过期键的处理
+   * 生成RDB文件：SAVE、BGSAVE创建一个新的rdb文件， 过期键不会被写入
+   * 载入RDB文件
+      * 主从模式的主，载入rdb文件不会载入过期键
+      * 主从模式的从，会载入过期键
+   * AOF文件写入
+      * 键删除之后会写入AOF文件
+   * AOF重写
+      * 已过期键不会写入
+   * 复制
+      * 当服务器运行在复制模式下时，从服务器的过期键删除动作由主服务器控制
+         * 主服务器在删除一个过期键之后，会显示地向从服务器发送一个DEL命令
+         * 从服务器在执行客户端发送的命令时，及时碰到过期键也不会删除，而是继续像处理未过期的键一样
+         * 从服务器之后在接受到主服务器发来DEL命令之后，才会删除key
+
+9.8 数据库通知
+   * SUBSCRIBE __keyspace@0__:message
+   * SUBSCRIBE __keyspace@0__:del
+
+
+***第10章：RDB持久化***
+
+10.1 RDB文件的创建和载入
+   * SAVE 
+      * 调用rdbSave()
+      * 执行期间redis会被阻塞，客户端请求会被拒绝
+   * BGSAVE
+     * fork子进程来做
+        * 子进程调用rdbSave()，然后signal_parent()
+        * 父进程继续处理命令，并且通过轮询等待子进程信号
+   * RDB文件载入时，服务器会一直阻塞
+
+ 10.2 自动间隔性保存
+    * 配置，任意满足则触发bgsave
+    ```
+    save 900 1
+    save 300 10
+    save 60 10000
+    redisSever{
+       struct saveparam * saveparams;// 记录了保存条件数组
+       long long dirty; //修改计数器，距离上次成功执行save或者bgsave之后服务器对于数据库状态（服务器中的所有数据库）进行多少次修改
+       time_t lastsave;// 上次成功执行save或者bgsave的时间
+    }
+    typedef struct saveparam {
+       time_t seconds;
+       int changes;
+    } saveparam;
+    ```
+    * 检查保存条件是否满足
+       * serverCront默认每个100ms就会执行一次，该函数用于对正在运行的服务器进行维护，其中一项就是检查条件是否满足，如果满足则进项bgsave
+
+ 10.3 RDB文件结构
+    * overall
+    |REDIS|db_version|databases|EOF|checksum|
+    * databases
+    |SELECTDB|db_number|key_value_pairs|
+    * key_value_pairs 
+    |TYPE|key|value| 
+    |EXPIRETIME_MS|ms|TYPE|key|value|
+    * value 的编码
+       * 字符串对象：|ENCODING|val|，有压缩和不压缩的差别
+       * 列表对象 |list_length|item1|item2|...|itemN|
+       * 集合对象：|set_size|elem1|elem2|...|elemN|
+       * 哈希表对象：|hash_size|key_value_pair1 |key_value_pair2|...|keyvalue_pairN|
+       * 有序集合对象：|sorted_set_size|elemtn1|elemtnt2|...|elementN|
+       * intset编码的集合：整数集合字符串化
+       * ziplist编码的列表、哈希表或者有序结合
+          * 将压缩列表转换成一个字符串对象
+
+10.4 分析RDB文件
+   * od -cx dump.rdb
+
+***Chapter 11: AOF持久化***
+
+11.1 AOF （Append Only File）持久化的实现   
+   * 命令追加
+      * 执行写命令之后会以协议格式将被执行的命令追加到服务器的aof_buf缓存区的末尾
+   ```
+   struct redisServer {
+       sds aof_buf; // AOF缓冲区
+   };
+   ```
+   * AOF问价的写入与同步
+   ```
+   def eventLoop():
+      while Ture:
+         # 处理文件事件、接受命令请求以及发送命令回复
+         # 处理命令请求时可能有新内容被最爱到aof_buf缓冲区中
+         processFileEvents()
+
+         # 处理事件事件
+         processTimeEvents()
+
+         # 考虑是否要将aof_buf中内容写入和保存到AOF文件里面
+         flushAppendOnlyFile()
+   ```
+   * appendfsync 选项
+      * always: 将aof_buf缓冲区中的所有内容写入并同步到AOF文件
+      * everysec：将aof_buf缓冲区中的所有内容写入到AOF问价，如果上次同步AOF文件的时间鞠距离现在超过一秒钟，那么再次对AOF文件进行同步，并且这个同步由一个线程专门负责执行
+      * no：将aof_buf缓冲区的所有内容写入AOF文件，但是何时同步将由操作系统同步
+   * 文件的写入与同步
+      * 现在OS中write()函数仅将内容写入缓冲区，等到缓冲区被填满或者超过指定的时限之后，才能将缓冲区中的内容写入磁盘
+      * 有fsync和fdatassyanc两个同步函数，来强制系统将缓冲区中的内容写入磁盘
+
+11.2 AOF文件的载入与数据还原
+   * 载入步骤：
+      1. 创建一个不带网络连接的伪客户端
+      1. 从aof文件中分析并读取一条命令
+      1. 使用为客户端执行被读出的写命令
+      1. 重复前两个步骤直到处理完成
+
+11.3 AOF重写
+   * aof_rewrite : 阻塞，导致无法处理客户端需求
+   * aof 后台重写
+      * 为了保证一致性，重写期间服务器进程
+         1. 执行客户端发来的命令
+         2. 将执行后的命令追加到AOF缓冲区 （确保现有的aof正确）
+         3. 将执行后的命令追加到AOF重写缓冲区（确保未来的aof正确）
+
+***Chapter 12：事件***
+
+   Redis服务器是一个事件驱动程序，主要处理两类事件
+   * 文件事件（file event）
+   * 时间事件（time event）
+      * 比如serverCron
+
+12.1 文件事件
+   * 基于Reactor模式开发了自己的网络事件处理器，（file event handler）
+      * 文件事件处理器使用I/O多路复用程序来同时监听多个套接字，并根据套接字目前执行的任务来为套接字关联不同的事件处理器
+      * 当被监听的套接字准备好连接应答（accept）、读取（read）、写入（write）、关闭（close）等操作时，与操作相关联的文件事件就会产生，这是文件事件处理器就会调用套接字之前关联好的事件处理器来处理
+   * 文件事件初期器的构成
+      1. 套接字
+      1. I/O多路复用程序
+         * 将所有产生事件的套接字都放到一个队列里面，然后通过这个队列，以有序（sequentially）、同步（Synchronously）、每次一个套接字的方式向文件事件分配器传送
+         * 当上一个套接字产生的时间呗处理完毕之后，I/O多路复用程序才会向文件事件分派器传送下一个套接字
+      1. 文件事件分派器（dispatcher）
+      1. 事件处理器
+   * I/O多路复用程序的实现
+      * select、epool、evport和kqueue
+   * 事件的类型
+      * AE_READABLE (优先处理)
+      * AE_WRITEABLE
+   * API
+      * ae.c/aeXXXFileEvent
+   * 文件事件处理器
+      1. 连接应答处理器：networking.c/accetpTcpHandler：客户端connect时候
+      1. 命令请求处理器：networking.c/readQueryFromClient
+         * 在客户端链接服务器过程中，服务器会一直为客户端套接字的AE_READABLE事件关联命令处理器
+      1. 命令回复处理器：networking.c/sendReplyToClient
+         * 当服务器有命令回复需要传送给客户端时候，服务器会将客户端的AE_WRITEABLE事件和命令回复处理器关联起来；发送完毕之后服务器会接触该关联
+      1. 一次完整的客户端与服务器连接事件示例
+
+12.2 时间事件
+   * 事件类型
+      * 定时事件
+      * 周期性事件
+   * 时间事件的三个属性
+      1. id：全局唯一ID，新的比旧的大
+      1. when：毫秒精度的unix时间戳，记录事件的到达时间
+      1. timeProc：时间事件处理器
+   * 事件类型的判定
+      * 如果事件处理器返回ae.h/AE_NOMORE，则为定时事件，事件到达之后会被删除，之后不会再到达
+      * 如果返回一个非AE——NOMORE，则是一个周期性时间
+   * time_events in redisServer
+   * 实例：serverCron函数
+      * 更新服务器的各类统计信息，比如时间、内存占用、数据库占用等
+      * 清理数据库中的过期键值对
+      * 关闭和清理链接失效的客户端
+      * 尝试进行AOF或RDB的持久化
+      * 如果服务器是主服务器，那么对从服务器进行定期同步
+      * 如果处于集群模式，对集群进行定期同步和链接测试
+
+12.3 事件的调度与执行
+   * 时间的调度和执行由ae.c/aeProcessEvents函数负责
+   ```
+   def aeProcessEvents():
+      # 获取到达时间离当前时间最接近的时间事件
+      time_event = aeSearchNearestTimer()
+     
+      # 计算最接近的时间事件距离到达时间还有多少毫秒
+      remaind_ms = time_event.when - unix_ts_now()
+
+      # 如果事件已经到达，那么remaind_ms的值可能为负，设置为0
+      if remaind_ms < 0:
+          remaind_ms = 0
+
+      # 根据remaind_ms的值，创建timeval结构
+      timeval = create_timeval_with_ms(remaind_ms)
+
+      # 阻塞并等待文件事件产生，最大阻塞时间由传入的timeval结构决定
+      # 如果remaind_ms的值为0，那么aeApiPoll调用马上返回，不阻塞
+      aeApiPool(timeval)
+
+      # 处理已经产生的文件事件
+      processFileEvents()
+
+      # 处理所有已达到的时间事件
+      processTimeEvents()
+   ```
+   * redis服务器的主函数
+   ```
+   def main():
+       # 初始化服务器
+       init_server()
+
+       # 一直处理事件，知道服务器关闭为止
+       while server_is_not_shutdown():
+           aeProcessEvents()
+
+       # 服务器关闭，执行清空操作
+       clean_server()
+
+   ```
+
+***Chapter 13: 客户端***
+
+   * redisServer中有一个 clients列表
+
+13.1 客户端属性
+   * 分为两类
+      1. 通用属性，这些属性很少与特定的功能相关，无论客户端执行什么工作，他们都要用到这些属性
+      1. 另一类是和特定功能相关的属性，比如操作数据库是需要用到的db属性和dict-id属性，执行事物时用到的mstate属性，以及WATCH命令用到的watched_keys属性
+   * 套接字属性
+      1. int fd; // 套接字
+         * 伪客户端（faked client）的值为-1
+         * 普通客户端，值为大于-1的整数
+      1. robj* name; // 名字
+      1. int flags;// 标志
+         * 记录了客户端的角色（role），以及客户端目前所处的状态
+      1. sds querybufer; // 输入缓冲区   
+         * 缓存客户端发来的命令
+      1. robj ** argv; // 参数列表
+      1. int argc; // 参数长度
+      1. struct redisCommand *cmd; // 命令的实现函数
+         * redis中存在一个命令字典
+         * 根据argv[0] 查询
+      1. char buf[REDIS_REPLY_CHUNK_BYTES];
+      1. int bufpos;
+      1. list *reply; // 可变大小缓冲区
+      1. int authenticated; // 身份验证
+      1. 时间相关
+         * time_t ctime;
+         * time_t lastinteraction;
+         * time_t obuf_soft_limit-reached_time;//  记录了输出换从去第一次到达软性限制的时间
+
+13.2 客户端的创建与关闭
+   * 创建普通客户端
+      * 置于clients列表
+   * 关闭普通客户端
+      * 客户端进程退出、client kill、服务端timeout设置、客户端发送的命令请求的大小超过输入缓冲区大小（1GB）、要发给客户端的命令回复的大小超过了输出缓冲区的限制大小
+      * 服务器使用两种模式来限制客户端输出缓冲区的大小
+         * 硬性限制
+         * 软性限制：obuf_soft_limit_reached_time
+   * lua脚本的伪客户端
+      * redisClient *lua_client; // 生命周期中一直存在
+   * AOF文件的为客户端
+      * 服务器在载入AOF文件时，会创建一个为客户端，用后关闭
+
+
+***Chapter 14：服务器***
+
+14.1 命令请求的执行过程 ： SET KEY VALUE
+   * 过程：
+      1. 客户端想服务器发送命令请求 SET KEY VALUE
+      1. 服务器接收到并处理客户端发来的命令请求，在数据库中进行设置，并产生命令回复OK
+      1. 服务器将命令回复OK发送给客户端
+      1. 客户端接收到服务器返回来的命令回复OK，并将这个回复打印给用户看
+   * 发送命令请求：客户端将命令转换成协议
+   * 读取命令请求
+      * 从socket读取命令，保存到保存客户端的输入缓冲区里面
+      * 对缓冲区内容进行分析，提取参数
+      * 调用命令执行器，执行客户端指定的命令
+   * 命令执行器：查找命令实现
+      * 根据argv[0] 到命令表中查找指定的命令，并且保存到客户端的cmd属性中
+      * redisCommand结构的主要特性
+      |属性名|类型|作用|
+      ---------------
+      |name|char *|命令的名字， 如set|
+      |proc|redisCommandProd *|执行命令的实现函数的函数指针|
+      |arity|int|命令的参数个数，如果是负数(-N)，则标识个数>=N|
+      |sflags|char *|记录了命令的属性：读、写、是否允许|
+      |flags|int|碎玉sflags分析得出的二进制标识|
+      |calls|long long|服务器执行该命令的总次数|
+      |milliseconds|long long|服务器执行该命令所耗费的时长|
+   * 命令执行器：执行预备操作
+      * 检查客户端状态的cmd指针是否指向NULL，如果为空，这返回
+      * 根据cmd属性指向的redisCommand结构的arity属性，检查命令行参数的个数，不符合则返回
+      * 检查客户端是否通过了身份验证
+      * 如果服务器打开了maxmemory功能，则在执行命令前，先检查服务器内存占用情况，并在有需要时进行内存回收
