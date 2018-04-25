@@ -713,3 +713,516 @@ redis 设计与实现
       * 根据cmd属性指向的redisCommand结构的arity属性，检查命令行参数的个数，不符合则返回
       * 检查客户端是否通过了身份验证
       * 如果服务器打开了maxmemory功能，则在执行命令前，先检查服务器内存占用情况，并在有需要时进行内存回收
+      * ...
+   * 命令执行器：调用命令的实现函数
+      * client->cmd->proc(client)
+      * 回复会保存在buf和reply属性
+      * 为客户端套接字关联 命令回复处理器
+   * 命令执行器：执行后续工作
+      * 如果开启了慢查询功能，则添加一条新的慢查询日志
+      * 根据执行时长，更新执行命令的redisCommand结构的milliseconds属性，并将命令的redisCommand结构的calls计数器增1
+      * 如果开启AOF持久化，则将命令加入到AOF缓冲区
+      * 如果其他从服务器正在复制当前这个服务器，那么服务器就会将刚才执行的命令传播给所有的从服务器
+   * 将命令回复发送给客户端
+      * 客户端接受并打印命令回复
+
+14.2 serverCron函数
+   *  默认100ms执行一次，负责管理服务器的资源，并且保持服务器自身的良好运转
+   * 更新服务器时间缓存
+   ```
+   struct redisServer {
+       time_t unixtime;//保存了秒级精度的系统当前UNIX时间戳
+       long long mstime;//保存了毫秒级进度的系统当前UNIX时间戳
+       unsigned lruclock:22; 默认10s更新一次的时钟缓存，用于计算键的空转时间
+   }
+   ```       
+      * 时间进度孤高，默认100ms才更新一次
+      * 服务器知会打印日志、更新服务器LRU时钟、决定是否执行持久化任务、
+   * 更新LRU时钟 ： redisServer.lruclock - redisObject.lru  
+   ```
+   typedef struct redisObject {
+      unsinged lru:22; // 保存对象最后一次被命令访问的时间
+   }
+   ```
+   * 更新服务器每秒执行的命令数
+      * serverCron()->trackOperationsPerScond()
+   ```
+   struct redisServer {
+      //上次抽样的时间
+      long long ops_sec_last_sample_time;
+      //上次抽样时，服务器已执行的命令的数量
+      long long ops_sec_last_sample_ops;
+      // REDIS_OPS_SEC_SAMPLES大小（默认为16）的环形数组，数组中每个项都记录了一次抽样结果
+      long long ops_sec_samples[REDIS_OPS_SEC_SAMPLES];
+      //ops_sec_samples数组的索引值，每次抽样周将值自增1，在等于16时重置为0，
+      int opos_sec_idx;
+   };
+   ```
+   * 更新服务器内存峰值记录
+      size_t stack_peak_memory; // 已使用内存峰值
+   * 处理SIGTERM信号
+      * 服务启动时，redis会为服务器进程的SIGTERM信号管理处理器sigtermHandler函数，当该信号达到服务器时，打开服务器状态的shutdown_asap标识
+      int redisServer.shutdown_asap;// 1 关闭，0 不做动作
+   * 管理客户端资源
+      * serverCron函数每次执行都会调用clientsCron函数，clientsCron会执行以下检查
+         1. 如果连接已经超时，则释放该客户端
+         1. 如果客户端在上一次执行命令请求之后，输入缓冲区的大小超过了一定的长度，那么程序会释放客户端当前的输入缓冲区，并重新创建一个默认大小的输入缓冲区
+   * 管理数据库资源
+      * 调用databaseesCron函数，会对服务器中的一部分数据库进行检查，删除其中的过期键，并在有需要时，对自检进行收缩操作
+   * 执行被延迟的BGREWTIREAOF
+      * int aof_rewrite_scheduled;// 如果值为1，表示有BGREWRITEAOF命令被延迟了
+   * 检查持久化操作的运行状态
+      * pid_t rdb_child_pid; // BGSAVE 命令执行期间的子进程ID
+      * pid_t aof_child_pid;//执行BGREWRITEAOF命令的子进程ID
+      * 检查两个属性的值，如果有一个不为-1，就执行wait3操作，检查是否有子进程发来信号
+         * 如果有信号，替换相应的文件
+         * 如果没有，则啥也不干
+      * 如果都为-1
+         1. 检查AOF是否被延迟了，若有，则开始
+         1. 检查服务器的自动保存条件是否已经满足，如果满足，并且执行服务器没有执行其他持化操作，则服务器进行BGSAVE
+         1. 检查服务器设置的AOF重写条件是否满足
+   * 将AOF缓冲区中的内容写入AOF文件
+   * 关不异步客户端
+   * 增加cronloops计数器，记录serverCron函数执行的次数
+      * 目前该值的应用是运行N次就执行一次指定的代码
+
+14.3 初始化服务器
+   1. 初始化服务器状态结构      
+      * initServerconfig(void)//负责属性
+   1. 载入配置选项
+   1. 初始化服务器数据结构
+      * initServer（）
+         * 负责初始化数据结构
+            * server.clents
+            * server.db
+            * server.pubsub_patterns
+            * server.lua
+            * server.slowlog
+         * 重要设置
+            * 为服务器设置进程信号处理器
+            * 创建共享对象：OK、ERR、1~10000字符串对象
+            * 打开服务器的监听端口，关联应答时间处理器
+            * 为serverCron时间事件
+            * 打开AOF持久化，如果配置了的话
+            * 初始化服务器的后台I/O模块（bio）为将来的I/O操作准备好
+   1. 还原数据库状态
+      * AOF or RDB
+   1. 执行事件循环 loop
+
+
+***Chapter 15：复制***
+
+   * SLAVEOF 或者设置 slaveof选项
+
+15.1 旧版本（2.8之前）复制功能的实现
+   * 分为同步（sync）和命令传播（command propagate）两个操作
+      * 同步用于将从服务器的数据库状态更新至主服务器当前所处的数据库状态
+      * 命令传播操作则用于在主服务器的数据库状态被修改，导致主从服务器的数据库状态出现不一致时，让主从服务器数据库重新回到一致状态。
+   * 同步
+      * 客户端性从服务器发送SLAVEOF命令，妖气从服务器复制主服务器时，从服务器首先需要执行同步操作
+         1. 从服务器想主服务器发送SYNC命令
+         1. 收到SYNC命令的主服务器执行BGSAVE命令，在后台生成一个RDB文件，并用一个缓冲区从现在开始记录执行的所有写命令
+         1. 当主服务器的BGSAVE命令执行完毕时，主服务器会将BGSAVE命令生成的RDB发送给从服务器，从服务器接受并载入这个RDB文件，将自己的数据库状态更新至主服务器执行BGSAVE命令是的数据库状态
+         1. 主服务器将记录在缓冲区里面的所有写命令发送给从服务器，从服务器执行这些写命令，将自己的数据库状态更新至主服务器数据库当前所处的状态。
+   * 命令传播
+      * 主服务器会将自己执行的写命令，也即是造成蛀虫服务器不一致的那条写命令，发送给从服务器执行。
+
+15.2 旧版本复制功能的缺陷
+   * 在从服务器断开之后，重新连接上并复制的场景，需要全量复制，效率较低。 
+
+15.3 新版复制功能的实现
+   * 新版的PSYNC命令代替SYNC命令，具有完成重同步和部分重同步的两种模式
+      * 完成重同步，用于处理初次发复制的情况：完整重同步的执行步骤和SYNC命令一样。
+      * 部分重同步则用于处理断线后重复值的情况：当从服务器在断线后重新连接主服务器时，如果条件运行，主服务器可以将主从服务器连接断开期间执行的写命令发送给同步服务器，从服务器只需要执行自威胁写命令，就可以将数据库更新至主服务器的状态。
+
+15.4 部分重同步的实现
+   * 有三个部分构成:
+      1. 主服务器的复制偏移量（replication offset）和从服务器的肤质偏移量
+      1. 主服务器的复制积压缓冲区（replicationbacklog）
+      1. 服务器的运行ID（run ID）
+   * 复制偏移量
+      * offset
+   * 复制积压缓冲区
+      * 是有主服务器维护的一个固定长度（fixed-size）的先进先出（FIFO）队列，默认大小是1MB
+      * 当主服务器进行命令传播时，他不仅会将写命令发送给所有的从服务器，还会降写命令入队到复制积压缓冲区里面
+      * 默认大小是1MB
+      * PSYNC（+从自己的偏移量offset）发送之后
+         * 如果主上offset之后的数据任然在复制积压缓冲区，则主服务器对从服务器进行部分重同步操作
+         * 星饭，如果offest偏移量之后的数据已经不再复制积压缓冲区，那么主服务器对从服务器执行完整同步操作
+   * 服务器运行ID
+      * 每个redis服务器，不论主从，都会有自己的运行ID
+      * 运行ID在服务器启动时自动生成，40个随机的16进制字符组成
+
+15.5 PSYNC命令的实现
+   * PSYNC 命令的调用方法
+      * 如果从服务器之前没有父之过任何主服务器，或者至前执行过SLAVEOF no one命令，那么从服务器在开始一次新的复制是想主服务器发送PSYNC ? -1 命令主动请求主服务器进行完整重同步（因为这个是不可能执行部分重同步）
+      * 相反，如果从服务器已经父之过某个主服务器，那么从服务器在开始一次新的复制时想主服务器发送PSYNC <runid:上一次复制的主服务器的运行id> <offset：当前服务器的偏移量>
+   * 接受到PSYNC命令的主服务器一般会有以下三种回复
+      * 主服务器返回 +FULLRESYNC <runid> <offset>
+      * 主服务器返回 +CONTINUE：表示主服务器将与从服务器执行部分同步
+      * 主服务器返回-ERR回复，那么表示主服务器版本低于Redis 2.8，其识别不了PSYNC命令
+
+15.6 复制的实现
+   * 通过向从服务器发送 SLAVEOF <master_ip> <master_port>
+   * 步骤1：设置主服务器的地址和端口
+   ```
+   struct redisServer {
+      char *masterhost;
+      int masterport;
+   }
+   ```
+   * 步骤2：简历套接字连接
+   * 步骤3：发送PING命令
+      * 发送ping命令可以检查套接字的读写状态是否正常
+      * 检查主服务器是否能处理PING命令
+         * 如果主返回PONG，则执行下一步
+         * 如果超时或者主服务器返回错误，则断开套接字
+   * 步骤4：身份验证
+   * 步骤5：发送端口信息
+      * 从执行：REPLCONF listening-port <port_number>，向主服务器发送从服务器的监听端口号
+   ```
+   typedef struct redisClient {
+       int slave_listening_port;
+   }
+   ```
+   * 步骤6：同步
+   * 步骤7：命令传播
+
+15.7 心跳检测
+   * 在命令传播阶段，从服务器默认会以每秒一次的频率，向主服务器发送命令 ： REPLCONF ACK <replication_offset>
+      * 检测主从服务器的网络连接状态
+      * 辅助实现min-slave选项
+      * 检测命令丢失
+   * 检测主从服务器的网络连接状态
+   * 辅助实现min-slaves配置选项
+      * min-slaves-to-write 3
+      * min-slaves-max-lag 10
+   * 检测命令丢失
+      * 如果检测到会重新发送执行命令
+
+
+***Chapter 16：Sentinel***
+
+16.1 启动并初始化Sentinel
+   * 命令：resis-sentinel /path/ot/your/sentinel.conf || redis-server /path/to/your/sentinel.conf --sentinel
+   * 启动时步骤
+       * 初始化服务器
+       * 将普通redis服务器使用的代码替换成Sentinel专用代码
+       * 初始化sentinel状态
+       * 根据给定的配置文件，初始化Sentinel的监视的主服务器列表
+       * 创建连想主服务器的网络连接
+   * 初始化服务器
+   * 使用sentinel专用代码
+      * 替换commandTable
+   * 初始化Sentinel状态
+   ```
+   struct sentinelState {
+      // 当前纪元，用户实现故障转移
+      uint64_t current_epoch;
+      // 保存了所有被这个Sentinel简史的主服务器
+      // 字典的键是主服务器的名字
+      // 字典的值择时一个指向sentinelReisInstance结构的指针
+      dict *masters;
+      // 是否进入了TILT模式
+      int tilt;
+      // 目前正在执行的脚本的数量
+      int running_scripts;
+      // 今日TILT模式的时间
+      mstime_t tilt_start_time;
+      // 最后一次执行时间处理器的时间
+      mstime_t previous_time;
+      // 一个FIFO队列，包含了所有需要执行的用户脚本
+      list *scripts_queue;
+   };
+   ```
+   * 初始化Sentinel状态的master属性
+   ```
+   type struct sentinelRedisInstance {
+      // 标记值，记录了实例的类型，一斤该实例当前的状态
+      int flags;
+      // 实例的名字，主服务器的名字有用户在配置文件中的设置，从服务器以及sentinel的名字有sentinel自动设置
+      char *name;
+      // 实例的运行id
+      char *runid;
+      // 配置纪元，用于实现故障转移
+      uint64_t config_epoch;
+      // 实例地址
+      sentinelAddr *addr;
+      // sentential down-after-milliseconds 选项设定的值
+      //实例无硬性多好毫秒之后才会被判定为主观下线
+      mstime_t down_after-period;
+      // sentinel monitor <mater-name> <ip> <port> <quorum> 选项中的quorum参数，判断这个实例为下线所需的支持投票数量
+      int quorum;
+
+      // sentinel parallel-syncs <master-name> <number> 选项的值，在执行故障转移操作时，可以同时对新的主服务器进行同步的从服务器数量
+      int parallel_syncs;
+
+      // sentinel failover-timeout <master-name> <ms> 选项的值，刷新故障迁移状态的最大时限
+      mstime_t failover_timeout;
+
+   }sentinelRedisInstance;
+   typedef struct sentinelAddr {
+      char *ip;
+      int port;
+   } sentinelAddr;
+
+   ```
+   * 创建联想主服务器的网络连接
+      * 对于每个被sentinel简史的主服务器来说，sentinel会创建两个联想主服务器的异步网络连接：
+         1. 一个是命令连接，这个链接转么用于向主服务器发送命令，并接受命令回复
+         1. 另一个是订阅链接，这个链接转么用于订阅主服务器的__sentinel__:hello频道
+
+16.2 获取主服务器信息
+   * sentinel默认会以没事秒一次的频率，通过命令连接想被监视的主服务器发送INOF命令，并通过分析INFO命令的回复来获取主服务器的当前信息
+   * 可以获取主的信息 + 从的信息
+
+16.3 获取从服务器信息
+   * 当sentinel发主服务器有新的从服务器出现时，sentinel除了会为这个心的从服务器创建相应的实例结构之外，Sentinel还会创建连接到从服务器的命令连接和订阅连接
+   * 发送INFO命令
+
+16.4 向主服务器和从服务器发送信息
+   * 通过命令连接发送命令 PUSBLISH __sentinel__:hello "<>,<>...."   
+   * sentinel 通过命令连加发送信息到频道
+
+16.5 接受来自主服务器和从服务器的频道信息
+   * sentinel订阅服务器的__sentinel__:hello 频道
+      * sentinel接收到信息的后会parse该信息，可能是自己发的则丢弃，也可能是其他sentinel发送的，则用来更新相应的信息
+   * 更新sentinels字典
+      * 监视同一个主服务器的多个sentinel可以自动发先其他的sentinel
+   * 创建链向其他sentinel的命令连接
+      * 最终监视同一主机的多个sentinel将形成相互连接的网络。
+
+16.6 检测主观下线状态
+   * 默认情况下sentinel会每秒一次的频率想所有与他创建命令连接的实例（包括主服务器、从服务器、其他sentinel在内）发送PING命令，并通过历史返回的PING命令回复来判断实例是否在线。
+   * 根据回复内容来判定主服务器是否下线
+      * 在down-fater-milliseconds毫秒内，连续向sentinel返回无效回复。
+
+16.7 检查客观下线状态
+   * 当sentinel将一个主服务器判定为主观下线之后，为了群人这个主服务器是否真的下线了   ，他会想同样监视这一主服务器的其他sentinel进行询问，看他们是否也认为这个主服务器下线（可以是主观或是客观）。当sentinel从其他sentinel哪里接收到足够数量的已下线判断之后，sentinel就会将服务器判定为客观下线，并对主服务器执行故障转移
+   * 发送sentinel is-master-down-by-addr <ip> <port> <current_epoch> <runid>以询问其他sentinel是否同意主服务器已下线。
+   * 接收sentinel is-master-down-by-addr 
+      * 统计其他sentinel统一服务器下线的数量，当这一数量达到配置置顶的判断客观下线所需的数量时，Sentinel会将主服务器实力结构flags属性的SRI_O_DOWN标识打开，标识已经进入客观下线。 
+
+16.8 选举领头Sentinel： RAFT算法
+   * 当主服务器被判断客观下线时，简史这个显现主服务器的各个sentinel会进行协商，选举出一个领头Sentinel，并有领头Sentinel对显现主服务器执行故障转移操作
+   * 选择领头Sentinel的规则和方法：
+      1. 所有在线的sentinel都有被选为领头sentinel的资格
+      1. 每次进行领头Sentinel选举之后，不论选举是否成功，所有sentinel配置纪元（configuration epoch）的值都会自增一次。
+      1. 在一个配置纪元里面，所所有的sentinel都有一次将某个sentinel设置为局部领头sentinel的机会，并且局部领头一旦设置，在这个配置纪元里面就不能再更改
+      1. 每个发现主服务器客观下线的sentinel都会要求其他sentinel将自己设置为局部领头sentinel
+      1. 当一个sentinel（源）想另一个sentinel（目标）发送sentinel is-master-down-by-addr命令，并且命令中的runid参数不是 * 符号而是源sentinel的运行ID时，这表示源sentinel要求目标sentinel将前者设置为后者的局部领头sentinel
+      1. sentinel设置局部领头sentinel的规则是先到先得
+      1. 目标sentinel在接收到sentinel is-master-down-by-addr 命令之后，将向源sentinel发挥一条命令回复，恢复中的leader_runid参数和leader_epoch参数分别记录了目标sentianle的局部领头sentinel的运行id和配置纪元
+      1. 源sentinel在接收到目标sentinel返回的命令回复之后，会检查恢复中leader_epoch参数的值和自己的配置纪元是否相同，如果相同，则源sentinel继续去除回复中的leader_runid参数，如果leader_runid参数的值和源sentinel的运行id一直，则标识目标sentinel奖源sentinel设置为了局部领头sentinel
+      1. 如果有某个sentinel被半数以上的sentinel设置为了领头sentinel，那么该sentinel成为领头sentinel。
+      1. 如果给定时间内，每个有一个sentinel被选举为领头sentinel，那么各个sentinel将在一段时间之后再次进行选举，知道选出领头sentinel为止
+
+16.9 故障转移
+   * 三步骤：由领头sentinel操作
+      1. 在已经下线的主服务器的所有从服务器里面，挑选出一个从服务器，并将其设置为主服务器
+         * 按照一定规则选出之后，对选中服务器发送 SLAVEOF no one
+      1. 让已下线主服务器属下所有从服务器修改复制新的主服务器
+         * 发送SLAVEOF <ip> <port>
+      1. 将已下线主服务器设置为新的主服务器的从服务器，当这个旧的从服务器重新连上时，他就会成为新的主服务器的从服务器
+         * 重新上线时会发送 SLAVEOF 命令
+
+
+
+***Chapter 17. 集群***
+
+17.1 节点
+   * 通过 CLATER MEET <ip> <port> 命令连接
+      * 向一个节点发送cluster meet命令， 可以让node节点与目标ip和port所指定的节点进行握手，成功之后，node节点就会将ip和port指定的节点添加到node节点当前所在的急群中
+   * 启动节点
+      * cluster-enabled
+        * true：集群模式
+        * false：standalone模式
+      * serverCron会调用clusterCron函数
+         * 发送Gossip消息，检查是否断线，或者进行故障转移
+   * 集群数据结构
+   ```
+   struct clusterNode {
+      // 创建节点的时间
+      mstime_t ctime;
+      // 节点名字，40个十六进制字符组成
+      char name[REDIS_CLUSTER_NAMELEN];
+      // 节点表示：角色 + 状态
+      int flags;
+      // 节点当前纪元，用于实现故障转移
+      uint64_t configEpoch;
+      // 节点的ip
+      char ip[REDIS_IP_STR_LEN];
+      // 节点端口
+      int port;
+      // 保存链节点所需的有关信息
+      clusterLink *link;
+   }；
+   typedef struct clusterLink {
+      mstime_t ctime;// 链接创建时间
+      int fd; //tcp套接字描述符
+      sds sndbuf; // 输出缓冲区
+      sds rcvbuf; // 输入缓冲区
+      struct clusterNode *node;// 与这个连接相关联的节点
+   } clusterLink;
+   typedef struct clusterState {
+      clusterNode *myself; // 指向当前节点的指针
+      uint64_t currentEpoch;// 集群当前的配置纪元，用于实现故障转移
+      int state;//集群当前的状态
+      int size;//急群众至少处理着一个槽的节点的数量
+      dict *nodes;// 集群中所有的节点
+   }
+   ```
+   * CLUSTER MEET命令的实现
+      * A MEET---> B
+      * A <---(pong) B
+      * A PING---> B
+
+17.2 槽指派
+   * redis 集群通过分片的方式来保存数据库中的键值对：集群被划分为16384个slot
+      * 16384 = 2 ** 14
+      * 每个节点可处理0~16384个槽
+      * 当数据库中16384个槽都有节点在处理时，汲取处于OK，否则处于fail
+      * cluster addslots
+   * 记录节点的槽指派信息
+   ```
+   struct clusterNode {
+      unsinged char slots[2 ** 14/8];// 位数组
+      int numslots;
+   };
+   ```
+   * 传播节点的槽指派信息
+      * 节点将自己的槽指派信息传递给集群中其他的节点
+      * 这些信息会存在其他节点的clusterState.nodes.get(name).slots数组中
+      * 集群中每个节点都有全局视角
+   * 记录集群中所有槽的纸片信息
+   ```
+   struct clusterState {
+      clusterNode *slots[2**14];
+   };
+   * CLUSTER ADDSLOTS <slot> [slot ...]
+   ```
+   ```
+   def CLUSTER_ADDSLOTS(*all_input_slots):
+      # 便利所有输入槽，检查是否都未被指派，如果有被指派，则返回错误，并终止
+      for i in all_input:slots:
+         if clusterState.slots[i] != NULL:
+            reploy_error
+            return
+      # 如果输入合法，再次遍历
+      for i in all_input_slots:
+         clusterState.slots[i] = clusterState.myself;
+         setSlotBit(clusterState.myself.slots, i)
+   ```
+
+17.3 在集群中执行命令
+   * 当16384个槽都被指派之后，集群处于上线状态
+   * 客户端想节点发送与数据库键有关的命令时，接收命令的节点会计算出要处理的数据库键属于哪个槽，并检查这个槽是否指派给了自己：
+      * 如果是，直接处理
+      * 若否，返回 MOVED错误，指引客户端专项到正确的节点
+   * 计算键属于哪个槽
+      * CRC16(key) & 16383
+   * 判断槽是否由当前节点负责处理
+      * clusterState.slots[i] 
+   * moved 错误
+      * MOVED <SLOT> <IP>:<PORT>
+   * 节点数据库的实现
+      * 键值对以及键值对的过期方式与standalone模式完全相同
+      * 节点还会用clusterState.slots_to_keys跳跃表保存槽和键职期间的关系
+
+17.4 重新分片
+   * 实现原理
+      * 由redis-trib负责执行
+      * redis-trib对集群的单个超slot进行重新分片的步骤如下
+         1. redis-trib 对目标节点发送 CLUSTER SETSLOT <slot> IMPORTING> <source_id>
+         1. redi-trib对源节点发送CLUSTER SETSLOT <slot> MIGRATING <target_id>
+         1. redis-trib 向源节点发送CLUSTER GETKEYSINSLOT <slot> <count>命令，获取最多count个属于槽slot的键值对的键名
+         1. 对于步骤3获得的每个键名，redis-trib都向源节点发送一个MIGRATE <target_ip> <target_port> <keyname> 0 <timeout> 命令，将键从源迁移至目标节点
+         1. 重复3&4，直到所有节点迁移完成
+         1. redis-trib 想集群中的任意一个节点发送CLUSTER SETSLOT <SLOT> <TARGET_ID> 命令，经槽slot指派给目标节点，这一指派信息会通过消息发送给整个集群，最终集群中的所有节点都会知道slot已经指派给了目标节点
+
+17.5 ASK 错误
+   * 在重新分片期间，源节点想目标节点迁移一个槽的过程中，可能会出现这样一种情况，属于被迁移槽的一部分键值对保存在源节点里面，而另一部分键值对保存在目标节点里面
+      * 如果要处理的键属于正在迁移的槽
+         1. 源节点会现在自己的数据库里面查找置顶的键，如果找到的话，就直接执行命令
+         1. 若相反，则该键有可能已经被迁移到新的节点，源节点想客户端返回一个ASK错误，置顶客户端转向正在导入槽的目标节点，并在此发送之前想要执行的命令
+   * cluster setslot importing命令实现: clusterState中
+      * clusterNode *importing_slots_from[16384];
+      * 值不为NULL，则标识正在导入
+   * CLUSTER SETSLOT migrating 命令的实现：clusterState中
+      * clusterNode *migrating_slots_to[16384];
+   * ASK错误
+      * 如果节点不在自己的数据库中，那么会检查clusterState.mirgrating_slots_to[i]，查看key所属的槽i是否正在迁移，如果是则发送一个ASK错误
+   * ASKING命令
+      * 打开该命令客户端的REDIS_ASKING标识
+      * REDIS_ASKING是一个一次性的标识
+   * ASK与MOVED的区别
+      * moved标识槽的负责权已经从一个节点转移到另一个节点
+      * ask错误只是两个节点在迁移槽的搓成中使用的一种临时措施
+
+17.6 复制与故障转移
+   * 设置从节点
+      * CLUSTER REPLICATE <node_id>
+         * 让接受命令的节点成为nodeid的从节点
+         * 相当于slaveof命令
+         ```
+         struct clusterNode {
+            //从
+            struct clusterNode *slaveof; // 是谁的slave
+            //主
+            int numslaves;
+            struct clusterNode **slaves;
+            //记录了其他节点对该节点的下线报告
+            list  *fail_reports;
+         };
+         ```
+         * 这个信息slave信息也是会同步给集群中其他的节点===>集群中每个节点还是有全局事视野的
+   * 故障检测
+      * 集群中的每个节点都会定期地向集群中的其他节点发送PING命令
+         * 若果未收到pong消息，会将接受ping消息的节点标志位疑似fail
+      * 集群中的各个节点会通过互相发送消息的方式来交换集群中各个节点状态信息，
+      ```
+      struct clusterNodeFailReport {
+         struct clusterNode *node;
+         mstime_t time;
+      };
+      ```
+      * 如果一个集群里面，半数以上负责处理槽的主节点都将某个x标记为疑似下线，那么这个主节点x将被标记为以下线（FAIL），将主节点x标记为已下线的节点会向集群广播一条关于主节点x的fail消息，所有收到这条fail消息的节点都会讲x标记为已下线
+   * 故障转移：由从节点发起
+      1. 复制下线主节点的所有从节点里面，会有一个从节点被复制
+      1. 被选中的送节点会执行saveof no one命令，成为新的主节点
+      1. 新的主节点会侧小所有对已下线主节点的槽指派，并将这些槽指派给自己
+      1. 新的主节点想集区广播一条PONG消息，这条PONG消息可以让集群中的其他节点立即知道这个节点已经有从节点编程主节点，并且这个主节点已经接管了原本有下线节点负责处理的槽
+      1. 新的主节点开始接受和自己负责处理的槽有关的命令请求，故障转移完成
+   * 选举新的主节点：基于Raft算法的领头选举（leader election）方法
+      1. 集群的配置纪元是一个自增计数器，它的初始值是0
+      1. 当集群里的某个节点开始一次故障转移操作时，集群配置纪元的值会被增1 
+      1. 对于每个配置纪元，集群里每个负责处理槽的主节点都有一次投票的机会，而这个想主节点要求投票的从节点将获得主节点的投票
+      1. 当从节点发现自己正在复制的主节点进入一下线状态时，从节点会广播CLUSTERMST_TYPE_FAILOVER_AUTH_REQUEST消息，要求所有接收到的、并具有投票权的主节点向这个从节点投票
+      1. 如果一个主节点具有投票权（有处理的槽），并且这个主节点尚未投票给其他的从节点，那么主节点将向要求投票的从节点返回一条clustermsg_TYPE_FAILOVER_AUTH_ACK消息，表示这个主节点支持从节点成为新的主节点
+      1. 每个参与选举的从节点都会收到CLUSTERMSG_TYPE_FAILOVER_AUTH_ACK消息，并根据自己收到了多少条这种信息来统计自己获得多少的主节点的支持
+      1. 如果集群里有N个具有投票权的主节点，那么当一个从节点收到大于N/2 +1 张支持票时，这个从节点就会当选为新的主节点
+      1. 因为在每一个配置纪元里面，每个具有投票权的主节点只能投一次，这点可以确保主节点只会有一个
+      1. 如果再一个配置纪元里面没有从节点能收集到足够多的支持票，那么集群进入一个新的配置纪元，并在此进行选举，知道选出新的主节点为止
+
+17.7 消息
+   * 集群中各个节点通过发送和接受消息来进行通讯
+      * meet、ping、pong、fail、publish
+   * 消息头
+      * 发送者自身的消息
+      * 通过Gossip协议交换各自关于不同节点的状态信息
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
