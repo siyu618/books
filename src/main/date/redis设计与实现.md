@@ -246,38 +246,41 @@ redis 设计与实现
    } robj;
    ```   
    * type
-     对象|对象的type属性的值|type 命令的输出
-    -------------------------------------
+   
+    对象|对象的type属性的值|type 命令的输出
+    ----|----------------|----------------
     字符串对象|REDIS_STRING|string
     列表对象|REDIS_LIST|list
     哈希对象|REDIS_HASH|hash
     集合对象|REDIS_SET|set
     有序集合对象|REDIS_ZSET|zset
+    
    * 编码和底层实现
-    |编码常量|编码所对应的底层数据结构|
-    -----------------------------
-    |REDIS_ENCODING_INT|long类型的整数| 
-    |REDIS_ENCODING_EMBSTR|embstr编码的简单动态字符串| 
-    |REDIS_ENCODING_RAW|简单动态字符串| 
-    |REDIS_ENCODING_HT|字典| 
-    |REDIS_ENCODING_LINKEDLIST|双端链表| 
-    |REDIS_ENCODING_ZIPLIST|压缩列表| 
-    |REDIS_ENCODING_INTSET|整数集合| 
-    |REDIS_ENCODING_SKIPLIST|跳跃表和字典| 
+   
+    编码常量|编码所对应的底层数据结构
+    -------|---------------------
+    REDIS_ENCODING_INT|long类型的整数
+    REDIS_ENCODING_EMBSTR|embstr编码的简单动态字符串
+    REDIS_ENCODING_RAW|简单动态字符串
+    REDIS_ENCODING_HT|字典
+    REDIS_ENCODING_LINKEDLIST|双端链表
+    REDIS_ENCODING_ZIPLIST|压缩列表
+    REDIS_ENCODING_INTSET|整数集 
+    REDIS_ENCODING_SKIPLIST|跳跃表和字典
 
-    |类型|编码|对象|object encoding输出|
-    --------------
-    |REDIS_STRING|REDIS_ENCODING_INT|使用整型值实现的字符串对象|"int"|
-    |REDIS_STRING|REDIS_ENCODING_EMBSTR|使用embstr编码的简单动态字符串实现的字符串对象|"embstr"|
-    |REDIS_STRING|REDIS_ENCODING_RAW|使用简单动态字符串实现的字符串对象|"raw"|
-    |REDIS_LIST|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的列表对象|"ziplist"|
-    |REDIS_LIST|REDIS_ENCODING_LINEDLIST|使用双端链表实现的列表对象|"linkedlist"|
-    |REDIS_HASH|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的哈希对象|"ziplist"|
-    |REDIS_HASH|REDIS_ENCODING_HT|使用字典表实现的哈希对象|"hashtabel"|
-    |REDIS_SET|REDIS_ENCODING_INTSET|使用整数集合实现的集合对象|"intset"|
-    |REDIS_SET|REDIS_ENCODING_HT|使用字典实现的集合对象|"hashtable"|
-    |REDIS_ZSET|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的有序集合对象|"ziplilst"|
-    |REDIS_ZSET|REDIS_ENCODING_SKIPLIST|使用跳跃表+字典表实现的有序集合对象|"skiplist"|
+    类型|编码|对象|object encoding输出
+    ---|----|---|-------------------
+    REDIS_STRING|REDIS_ENCODING_INT|使用整型值实现的字符串对象|"int"
+    REDIS_STRING|REDIS_ENCODING_EMBSTR|使用embstr编码的简单动态字符串实现的字符串对象|"embstr"
+    REDIS_STRING|REDIS_ENCODING_RAW|使用简单动态字符串实现的字符串对象|"raw"
+    REDIS_LIST|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的列表对象|"ziplist"
+    REDIS_LIST|REDIS_ENCODING_LINEDLIST|使用双端链表实现的列表对象|"linkedlist"
+    REDIS_HASH|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的哈希对象|"ziplist"
+    REDIS_HASH|REDIS_ENCODING_HT|使用字典表实现的哈希对象|"hashtabel"
+    REDIS_SET|REDIS_ENCODING_INTSET|使用整数集合实现的集合对象|"intset"
+    REDIS_SET|REDIS_ENCODING_HT|使用字典实现的集合对象|"hashtable"
+    REDIS_ZSET|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的有序集合对象|"ziplilst"
+    REDIS_ZSET|REDIS_ENCODING_SKIPLIST|使用跳跃表+字典表实现的有序集合对象|"skiplist"
  
 8.2 字符串对象
     * 编码可以是 int、embstr（<=32字节）或者raw（>32字节）
@@ -699,15 +702,17 @@ redis 设计与实现
    * 命令执行器：查找命令实现
       * 根据argv[0] 到命令表中查找指定的命令，并且保存到客户端的cmd属性中
       * redisCommand结构的主要特性
-      |属性名|类型|作用|
-      ---------------
-      |name|char *|命令的名字， 如set|
-      |proc|redisCommandProd *|执行命令的实现函数的函数指针|
-      |arity|int|命令的参数个数，如果是负数(-N)，则标识个数>=N|
-      |sflags|char *|记录了命令的属性：读、写、是否允许|
-      |flags|int|碎玉sflags分析得出的二进制标识|
-      |calls|long long|服务器执行该命令的总次数|
-      |milliseconds|long long|服务器执行该命令所耗费的时长|
+      
+      属性名|类型|作用
+      -----|----|-----
+      name|char *|命令的名字， 如set
+      proc|redisCommandProd *|执行命令的实现函数的函数指针
+      arity|int|命令的参数个数，如果是负数(-N)，则标识个数>=N
+      sflags|char *|记录了命令的属性：读、写、是否允许
+      flags|int|碎玉sflags分析得出的二进制标识
+      calls|long long|服务器执行该命令的总次数
+      milliseconds|long long|服务器执行该命令所耗费的时长
+      
    * 命令执行器：执行预备操作
       * 检查客户端状态的cmd指针是否指向NULL，如果为空，这返回
       * 根据cmd属性指向的redisCommand结构的arity属性，检查命令行参数的个数，不符合则返回
