@@ -247,48 +247,48 @@ redis 设计与实现
    ```   
    * type
    
-    对象|对象的type属性的值|type 命令的输出
-    ----|----------------|----------------
-    字符串对象|REDIS_STRING|string
-    列表对象|REDIS_LIST|list
-    哈希对象|REDIS_HASH|hash
-    集合对象|REDIS_SET|set
-    有序集合对象|REDIS_ZSET|zset
+   对象|对象的type属性的值|type 命令的输出
+   ----|-----------------|----------------
+   字符串对象|REDIS_STRING|string
+   列表对象|REDIS_LIST|list
+   哈希对象|REDIS_HASH|hash
+   集合对象|REDIS_SET|set
+   有序集合对象|REDIS_ZSET|zset
     
    * 编码和底层实现
    
-    编码常量|编码所对应的底层数据结构
-    -------|---------------------
-    REDIS_ENCODING_INT|long类型的整数
-    REDIS_ENCODING_EMBSTR|embstr编码的简单动态字符串
-    REDIS_ENCODING_RAW|简单动态字符串
-    REDIS_ENCODING_HT|字典
-    REDIS_ENCODING_LINKEDLIST|双端链表
-    REDIS_ENCODING_ZIPLIST|压缩列表
-    REDIS_ENCODING_INTSET|整数集 
-    REDIS_ENCODING_SKIPLIST|跳跃表和字典
+   编码常量|编码所对应的底层数据结构
+   -------|---------------------
+   REDIS_ENCODING_INT|long类型的整数
+   REDIS_ENCODING_EMBSTR|embstr编码的简单动态字符串
+   REDIS_ENCODING_RAW|简单动态字符串
+   REDIS_ENCODING_HT|字典
+   REDIS_ENCODING_LINKEDLIST|双端链表
+   REDIS_ENCODING_ZIPLIST|压缩列表
+   REDIS_ENCODING_INTSET|整数集 
+   REDIS_ENCODING_SKIPLIST|跳跃表和字典
 
-    类型|编码|对象|object encoding输出
-    ---|----|---|-------------------
-    REDIS_STRING|REDIS_ENCODING_INT|使用整型值实现的字符串对象|"int"
-    REDIS_STRING|REDIS_ENCODING_EMBSTR|使用embstr编码的简单动态字符串实现的字符串对象|"embstr"
-    REDIS_STRING|REDIS_ENCODING_RAW|使用简单动态字符串实现的字符串对象|"raw"
-    REDIS_LIST|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的列表对象|"ziplist"
-    REDIS_LIST|REDIS_ENCODING_LINEDLIST|使用双端链表实现的列表对象|"linkedlist"
-    REDIS_HASH|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的哈希对象|"ziplist"
-    REDIS_HASH|REDIS_ENCODING_HT|使用字典表实现的哈希对象|"hashtabel"
-    REDIS_SET|REDIS_ENCODING_INTSET|使用整数集合实现的集合对象|"intset"
-    REDIS_SET|REDIS_ENCODING_HT|使用字典实现的集合对象|"hashtable"
-    REDIS_ZSET|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的有序集合对象|"ziplilst"
-    REDIS_ZSET|REDIS_ENCODING_SKIPLIST|使用跳跃表+字典表实现的有序集合对象|"skiplist"
+   类型|编码|对象|object encoding输出
+   ---|----|---|-------------------
+   REDIS_STRING|REDIS_ENCODING_INT|使用整型值实现的字符串对象|"int"
+   REDIS_STRING|REDIS_ENCODING_EMBSTR|使用embstr编码的简单动态字符串实现的字符串对象|"embstr"
+   REDIS_STRING|REDIS_ENCODING_RAW|使用简单动态字符串实现的字符串对象|"raw"
+   REDIS_LIST|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的列表对象|"ziplist"
+   REDIS_LIST|REDIS_ENCODING_LINEDLIST|使用双端链表实现的列表对象|"linkedlist"
+   REDIS_HASH|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的哈希对象|"ziplist"
+   REDIS_HASH|REDIS_ENCODING_HT|使用字典表实现的哈希对象|"hashtabel"
+   REDIS_SET|REDIS_ENCODING_INTSET|使用整数集合实现的集合对象|"intset"
+   REDIS_SET|REDIS_ENCODING_HT|使用字典实现的集合对象|"hashtable"
+   REDIS_ZSET|REDIS_ENCODING_ZIPLIST|使用压缩列表实现的有序集合对象|"ziplilst"
+   REDIS_ZSET|REDIS_ENCODING_SKIPLIST|使用跳跃表+字典表实现的有序集合对象|"skiplist"
  
 8.2 字符串对象
-    * 编码可以是 int、embstr（<=32字节）或者raw（>32字节）
-    * 对于raw编码，会调用两次内存分配来分别创建redisObject和sdshdr
-    * 对于embstr则会调用一次内存分配函数来分配一块连续的内存（redisObject|sdshdr）
-    * 编码转换规则
-       * int -> str, 则直接用raw
-       * embstr 不可变，embstr -> raw
+   * 编码可以是 int、embstr（<=32字节）或者raw（>32字节）
+   * 对于raw编码，会调用两次内存分配来分别创建redisObject和sdshdr
+   * 对于embstr则会调用一次内存分配函数来分配一块连续的内存（redisObject|sdshdr）
+   * 编码转换规则
+      * int -> str, 则直接用raw
+      * embstr 不可变，embstr -> raw
 
 8.3 列表对象
    * 编码可以是ziplist或者linkedlist
@@ -459,7 +459,7 @@ redis 设计与实现
         * 父进程继续处理命令，并且通过轮询等待子进程信号
    * RDB文件载入时，服务器会一直阻塞
 
- 10.2 自动间隔性保存
+10.2 自动间隔性保存
     * 配置，任意满足则触发bgsave
     ```
     save 900 1
@@ -478,23 +478,23 @@ redis 设计与实现
     * 检查保存条件是否满足
        * serverCront默认每个100ms就会执行一次，该函数用于对正在运行的服务器进行维护，其中一项就是检查条件是否满足，如果满足则进项bgsave
 
- 10.3 RDB文件结构
-    * overall
+10.3 RDB文件结构
+   * overall
     |REDIS|db_version|databases|EOF|checksum|
-    * databases
+   * databases
     |SELECTDB|db_number|key_value_pairs|
-    * key_value_pairs 
+   * key_value_pairs 
     |TYPE|key|value| 
     |EXPIRETIME_MS|ms|TYPE|key|value|
-    * value 的编码
-       * 字符串对象：|ENCODING|val|，有压缩和不压缩的差别
-       * 列表对象 |list_length|item1|item2|...|itemN|
-       * 集合对象：|set_size|elem1|elem2|...|elemN|
-       * 哈希表对象：|hash_size|key_value_pair1 |key_value_pair2|...|keyvalue_pairN|
-       * 有序集合对象：|sorted_set_size|elemtn1|elemtnt2|...|elementN|
-       * intset编码的集合：整数集合字符串化
-       * ziplist编码的列表、哈希表或者有序结合
-          * 将压缩列表转换成一个字符串对象
+   * value 的编码
+      * 字符串对象：|ENCODING|val|，有压缩和不压缩的差别
+      * 列表对象 |list_length|item1|item2|...|itemN|
+      * 集合对象：|set_size|elem1|elem2|...|elemN|
+      * 哈希表对象：|hash_size|key_value_pair1 |key_value_pair2|...|keyvalue_pairN|
+      * 有序集合对象：|sorted_set_size|elemtn1|elemtnt2|...|elementN|
+      * intset编码的集合：整数集合字符串化
+      * ziplist编码的列表、哈希表或者有序结合
+         * 将压缩列表转换成一个字符串对象
 
 10.4 分析RDB文件
    * od -cx dump.rdb
