@@ -246,13 +246,13 @@ redis 设计与实现
    } robj;
    ```   
    * type
-    | 对象|对象的type属性的值|type 命令的输出|
+     对象|对象的type属性的值|type 命令的输出
     -------------------------------------
-    |字符串对象|REDIS_STRING|string|
-    |列表对象|REDIS_LIST|list|
-    |哈希对象|REDIS_HASH|hash|
-    |集合对象|REDIS_SET|set|
-    |有序集合对象|REDIS_ZSET|zset|
+    字符串对象|REDIS_STRING|string
+    列表对象|REDIS_LIST|list
+    哈希对象|REDIS_HASH|hash
+    集合对象|REDIS_SET|set
+    有序集合对象|REDIS_ZSET|zset
    * 编码和底层实现
     |编码常量|编码所对应的底层数据结构|
     -----------------------------
