@@ -403,7 +403,6 @@
 **Chapter 6： Zookeeper的典型应用场景**
 
 6.1 典型应用场景及实现
-
 6.1.1 数据发布/订阅
    * 即所谓配置中心
    * 发布订阅系统一般有两种设计模式，分别是推（Push）模式和拉模式（Pull）模式
@@ -478,7 +477,6 @@
       * 需要等N个数据都ready才会开始计算
 
 6.2 Zookeeper在大型分布式系统中的应用
-
 6.2.1 Hadoop
    * YARN
    * ResourceManager 单点问题
@@ -527,5 +525,214 @@
 6.3.4 分布式数据库同步系统：Otter
 6.3.5 轻量级分布式通用搜索平台：终搜
 6.3.6 实时计算引擎： JStorm
-      
-      
+
+
+
+** 7 Zookeeper技术内幕**
+
+7.1 系统模型
+   * 数据模型：树，事务ID（ZXID）
+   * 节点特性：
+      * 持久节点
+      * 持久顺序节点
+      * 临时节点
+      * 临时顺序节点
+      * 状态信息
+         * czxid ： 创建时的事务ID
+         * mzxid : 节点最后一次更新时的事务ID
+         * ctime : 节点被创建的时间
+         * mtime : 节点最后一次被修改的时间
+         * version：节点的数据版本号（这个强调的是次数，而非内容）
+         * cversion：子节点的版本号
+         * aversion：节点acl版本号
+         * pzxid：表示该节点的子节点列表最后一次被修改时的事务ID
+   * 版本：保证分布式数据原子性操作
+      * 悲观锁：强烈的独占性和排他性，假设事务一定会互相干扰
+      * 乐观锁：假设多个事务不会彼此干扰，
+         * 分解为三个阶段：数据读取，写入校验和数据写入
+         * 其中写入校验是关键所在
+   * Watcher：数据变更的通知
+      * WatchedEvent（逻辑事件）<==> WatcherEvent（接口事件）
+      * 工作机制
+         * 包括三个过程：客户端注册Watcher， 服务端处理Watcher和客户端回调Watcher
+         * 客户端注册：
+            * 客户端对当前请求进行标记，将其设置为“使用Watcher监听”，同时会封装一个Watcher的注册信息WatchRegistration
+            * zk中使用packet传输数据，ClientCnxn中的WatchRegistration会被封装到Packet中，之后放入发送队列
+            * 客户端sendThread线程的readResponse
+            * finishPacket方法从Packet中去除对应的Watcher并注册到ZkManager中
+            * Map<String, Set<Watcher>> dataWatchers中存放路径到Watcher的映射管理
+         * 服务端处理Watcher
+            * ServerCnxn存储
+            * WatcherManager对watcher进行处理
+               * watchTable： 从数据节点路径的力度来托管Watcher
+               * watch2Paths：从Watcher的力度来控制事件触发的条件
+            * DataTree会托管两个WatcherManager
+               * dataWatches：对应数据变更watch
+               * childWatches：对应子节点变更watch
+            * 触发Watch
+               * 封装WatchedEvent
+               * 查询Watcher，此处若有watcher，会删除掉，即只触发一次
+               * 调用process方法来触发Watcher
+                  * 请求头标记为-1， 表示是一个通知
+         * 客户端回调Watcher
+            * SendThread接受事件通知
+               * 反序列化
+               * 处理chrootPath
+               * 还原WatchedEvent
+               * 回调Watcher：将watchedEvent交给EventThread处理
+            * EventThread处理事件通知
+         * Watcher特性总结
+            * 一次性
+            * 客户端串行执行
+            * 轻量
+   * ACL 保障数据的安全
+      * UGO VS. ACL
+      * 权限模式 Scheme： IP， Digest， World， Super
+      * 授权对象 ID
+      * 权限扩展体系
+      * ACL管理
+
+7.2 序列化与协议
+   * Jute
+   * 通信协议
+      * 请求
+         * |len|请求头|请求体|
+      * 相应
+         * |len|响应头|相应体|
+
+7.3 客户端
+   * Zookeeper
+   * ClientWatchManager
+   * HostProvider
+   * ClientCnnx
+   * 一次会话的创建过程
+      * 初始化阶段
+      * 会话创建阶段
+      * 响应处理阶段
+   * 服务器地址列表
+      * chroot：客户端隔离命名空间
+      * HostProvider：地址列表管理
+      * ClientCnxn：网络I/O
+      * sendthread
+      * eventthread
+
+7.4 会话
+   * 会话状态
+   * 会话创建
+   * 会话管理
+      * 分桶管理
+      * 会话激活
+   * 会话清理
+   * 重连
+
+7.5 服务器启动
+   * 单机版服务器启动
+   * 集群版服务器启动
+      * leader选举
+
+7.6 Leader选举
+   * 概述
+      * 服务器启动时的leader选举
+      * 服务器运行期间的leader选举
+   * leader选举的算法分析
+      * sid
+      * zxid
+      * vote
+      * quorum
+   * Leader选举的细节
+      * 服务器状态
+         * LOOKING
+         * FOLLOWING
+         * LEADING
+         * OBSERVING
+
+7.7 各服务器角色介绍
+   * leader
+      * 请求处理链
+   * Follower
+   * observer
+   * 集群间消息通信
+
+7.8 请求处理
+   * 会话创建请求
+   * setdata请求
+   * 事务请求转发
+   * getdata请求
+
+7.9 数据与存储
+   * 内存数据
+   * 事务日志
+   * snapshot
+   * 初始化
+   * 数据同步
+
+
+**Chapter 8：zookeeper运维**
+
+8.1 配置详解
+   * 基本配置
+   * 高级配置
+
+8.2 四字命令
+
+8.3 JMX
+   * 开启远程JMX
+   * 通过JConsole连接Zookeeper
+
+8.4 监控
+   * 实时监控
+   * 数据统计
+
+8.5 构建一个高可用的集群
+   * 集群组成
+      * 2*F + 1   
+   * 容灾
+   * 扩容与缩容
+
+8.6 日常运维
+   * 数据与处理日志
+   * to many connections
+   * 磁盘管理
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
