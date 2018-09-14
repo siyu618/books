@@ -134,7 +134,325 @@ Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构�
          }
       ```
 
+Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原理
+   * https://blog.csdn.net/chunlongyu/article/details/52872281
+   * broker的生与死
+      * zk中/brokers/ids/xxx
+   * Controller
+      * 为了减小zk的压力，同时降低分布式系统的复杂性，kafka引入了中央控制器Controller
+      * 利用zk选举出Controller，然后Controller控制所有的broker
+      * Controller监听zk上节点的变化
+   * topic与partition的增加/删除
+      * 管理端将增加/删除命令发给zk，Controller监听zk获取更新消息，Controller在分组发送给相关的broker
+   * 101 Tech ZkClient
+      * kafka、dobbo都是使用这个client的，较为轻量级
+      * 三个接口
+         * IZkStateListener，IZkDataListener， IZkChildListener
 
 
+Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController选举过程/Failover与Resignation
+   * https://blog.csdn.net/chunlongyu/article/details/52933947
+   * 在sever的启动函数中，可以看到以下几大核心组件
+      1. socketServer + KafkaApis前者接受所有网络请求， 后者处理请求
+      2. KafkaController负责Controller选举
+      3. ConsumerCoordinator，用于负责consume group的负载均衡
+      4. ReplicaManager机器的管理
+      5. KafkaSchedule
+   * 选举的基本原理
+      * 在zk中创建/controller临时节点，其data用来记录当前的controller的brokerid [“version”=1，“broker“=brokerId， ”timestamp“=timestamp]
+      * /controller_epoch用来记录当前的轮次
+   * KafkaController与ZookeeperLeaderElector
+      * 后者是前者的一个成员
+      * 选举交互过程
+         1. KafkaController和ZookeeperLeaderElector内部各有一个Listener，一个监听session重连，一个监听、controller变化
+         2. 当session重连或者/controller节点被删除，则调用elect()函数，发起重新选举。在重新选举之前，先判断自己是否是就得Controller，如果是则先调用onRegistration退位
+      * 两个关键回调
+         * 新官上任 + 旧官退位
+
+Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核心数据结构与Replica同步原理
+   * https://blog.csdn.net/chunlongyu/article/details/52938947
+   * ReplicaManger
+``` java
+   class ReplicaManager(val config: KafkaConfig,
+                     metrics: Metrics,
+                     time: Time,
+                     jTime: JTime,
+                     val zkUtils: ZkUtils,
+                     scheduler: Scheduler,
+                     val logManager: LogManager,
+                     val isShuttingDown: AtomicBoolean,
+                     threadNamePrefix: Option[String] = None) extends Logging with KafkaMetricsGroup {
+  //核心变量：存储该节点上所有的Partition
+  private val allPartitions = new Pool[(String, Int), Partition]
+
+  ///然后对于每1个Partition，其内部又存储了其所有的replica，也就是ISR:
+  class Partition(val topic: String,
+                val partitionId: Int,
+                time: Time,
+                replicaManager: ReplicaManager) extends Logging with KafkaMetricsGroup {
+  private val localBrokerId = replicaManager.config.brokerId
+  private val logManager = replicaManager.logManager
+  private val zkUtils = replicaManager.zkUtils
+  private val assignedReplicaMap = new Pool[Int, Replica]
+  //核心变量：这个Partition的leader
+  @volatile var leaderReplicaIdOpt: Option[Int] = None
+
+  //核心变量：isr，也即除了leader以外，其它所有的活着的follower集合
+  @volatile var inSyncReplicas: Set[Replica] = Set.empty[Replica]
+  class Replica(val brokerId: Int,
+              val partition: Partition,
+              time: Time = SystemTime,
+              initialHighWatermarkValue: Long = 0L,
+              val log: Option[Log] = None) extends Logging {
+
+  。。。
+  //核心变量：该Replica当前从leader那fetch消息的最近offset，简称为loe
+  @volatile private[this] var logEndOffsetMetadata: LogOffsetMetadata = LogOffsetMetadata.UnknownOffsetMetadata
+```
+
+   * replica同步原理
+      *  t0p1: b2, b3, b5（对于该partition，b2作为leader); 
+      * b2的socketServer收到producer的producerRequest请求，把请求交个ReplicaManager处理，ReplicaManager调用自己的appendMessage函数，将消息存到本地日志
+      * ReplicaManager生成一个DelayedProducerRequest对象，放入DelayedProducerPugator中，等待follower来把该请求pull到自己的服务器上
+      * 2个followers会跟consumer一样，发送FetchRequest请求到socketServer，ReplicaManager调用自己的fetchMessage函数返回日志，同时更新2个follower的LOE（LogEndOffset），病且判断DelayedProducer是否可以complete。如果可以则发送ProduceRepose
+  * 关键点
+     1. 每个DelayedProduce内部办函一个ProduceResponseCallback函数。当complete之后，该callback被调用，也就处理了ProduceRequest请求
+     2. leader处理ProduceRequest请求和follower同步日志，这两个事情是并行的。leader不会等待两个follower同步该消息，再处理下一个。
+     * 每一个ProduceRequest对于一个该请求写入日志是的requestOffset。判断该消息是否同步完成，只要每个replica的LOE>=reqeustOffset就可以了，并不需要完全相等
+
+Kafka源码深度解析－序列13 －Server核心组件之2(续)－ TimingWheel本质与DelayedOperationPurgatory核心结构
+   * https://blog.csdn.net/chunlongyu/article/details/52971748
+   * ReplicaManager内部的2个成员变量
+```java
+class ReplicaManager(val config: KafkaConfig,
+                     metrics: Metrics,
+                     time: Time,
+                     jTime: JTime,
+                     val zkUtils: ZkUtils,
+                     scheduler: Scheduler,
+                     val logManager: LogManager,
+                     val isShuttingDown: AtomicBoolean,
+                     threadNamePrefix: Option[String] = None) extends Logging with KafkaMetricsGroup {
+
+  //关键组件：每来1个ProduceReuqest，写入本地日志之后。就会生成一个DelayedProduce对象，放入delayedProducePurgatory中。
+  // 之后这个delayedProduce对象，要么在处理FetchRequest的时候，被complete()；要么在purgatory内部被超时.
+  val delayedProducePurgatory = new DelayedOperationPurgatory[DelayedProduce](
+    purgatoryName = "Produce", config.brokerId, config.producerPurgatoryPurgeIntervalRequests)
+
+  val delayedFetchPurgatory = new DelayedOperationPurgatory[DelayedFetch](
+    purgatoryName = "Fetch", config.brokerId, config.fetchPurgatoryPurgeIntervalRequests)
+```
+   * DelayedProducePurgatory核心结构
+      * DelayedProducePurgatory 两个核心部件：watches的map，一个是Timer
+      * DelayedProduce 对应的有两个：一个是delayedOperation，同时它也是一个TimerTask
+      * 每当处理一个ProduceRequest，就会生产等一个DelayedProducer对象，被加入到Watcher中，同时其也是一个TimeTask，加入到Timer中。
+      * 最后这个DelayedProduce可能被接下来的Fetch满足，也可能在Timer中超时，给客户端返回超错误。 如果是前者，就需要在timer中调用Task.cancel，把该任务删除。
+   * Timer的实现，TimingWheel
+      * DelayedQUeue的时间复杂度是O(lg(n))，同时不支持随机删除。
+      * TimingWheel的，O(1)，支持Task的碎甲删除
+      * 实现方式：
+         * 调用者不断调用time.add函数添加新的Task，
+         * Timer不是内部线程驱动，而是有一个外部的线程ExpiredOperationReaper，不断的调用time.advanceClock()函数，来驱动整个Timer
+         * 总结：一个有两个外部线程，一个驱动Timer，一个executor专门用来执行过期的task。整个两个线程都是DelayedOperationPurgatory的内部变量
+   * Timer的内部结构
+      * Timer是最外城雷，表示一个定时器。其内部一个TimingWheel对象，TimingWheel是层次结构的，每个TimingWheel可能有parentTimingWheel（这个原理就类似于生活中的水表，不同表盘有不同的刻度
+      * TimingWheel是一个时间刻度盘，每个刻度上有一个TimerTask的双向链表，称之为一个bucket，同一个bucket中的所有task的过期时间相同。因此每个bucket有一个过期时间的字段
+      * 所有的TimingWheel公用了一个DelayedQueue，这个DelayQueue存储了所有的bucket，而不是TimeTask。
+```java
+//Timer
+class Timer(taskExecutor: ExecutorService, tickMs: Long = 1, wheelSize: Int = 20, startMs: Long = System.currentTimeMillis) {
+  //核心变量 TimingWheel
+  private[this] val timingWheel = new TimingWheel(
+    tickMs = tickMs,
+    wheelSize = wheelSize,
+    startMs = startMs,
+    taskCounter = taskCounter,
+    delayQueue
+  )
+  
+  //Timer的核心函数之1：加入一个TimerTask
+  def add(timerTask: TimerTask): Unit = {
+    readLock.lock()
+    try {
+      addTimerTaskEntry(new TimerTaskEntry(timerTask))
+    } finally {
+      readLock.unlock()
+    }
+  }
+
+  //Timer的核心函数之2：Tick，每走1次，内部判断过期的TimerTask，执行其run函数
+  def advanceClock(timeoutMs: Long): Boolean = {
+    var bucket = delayQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
+    if (bucket != null) {
+      writeLock.lock()
+      try {
+        while (bucket != null) {
+          timingWheel.advanceClock(bucket.getExpiration())
+          bucket.flush(reinsert)
+          bucket = delayQueue.poll()
+        }
+      } finally {
+        writeLock.unlock()
+      }
+      true
+    } else {
+      false
+    }
+  }
+
+  //TimingWheel内部结构
+private[timer] class TimingWheel(tickMs: Long, wheelSize: Int, startMs: Long, taskCounter: AtomicInteger, queue: DelayQueue[TimerTaskList]) {
+
+  private[this] val interval = tickMs * wheelSize   //每1格的单位 ＊ 总格数（比如1格是1秒，60格，那总共也就能表达60s)
+
+  //核心变量之1：每个刻度对应一个TimerTask的链表
+  private[this] val buckets = Array.tabulate[TimerTaskList](wheelSize) { _ => new TimerTaskList(taskCounter) }
 
 
+  //核心变量之2：parent TimingWheel
+  @volatile private[this] var overflowWheel: TimingWheel = null
+
+  private[timer] class TimerTaskList(taskCounter: AtomicInteger) extends Delayed {
+
+  private[this] val root = new TimerTaskEntry(null) //链表的头节点
+  root.next = root
+  root.prev = root
+
+  //每个TimerTaskEntry封装一个TimerTask对象，同时内部3个变量
+private[timer] class TimerTaskEntry(val timerTask: TimerTask) {
+
+  @volatile
+  var list: TimerTaskList = null   //指向该链表自身
+  var next: TimerTaskEntry = null  //后一个节点
+  var prev: TimerTaskEntry = null  //前1个节点
+
+ //因为同1个bucket(TimerTaskEntryList)里面的过期时间都相等，所以整个bucket记录了一个过期时间的字段expiration
+    private[this] val expiration = new AtomicLong(-1L)
+
+//除非该bucekt被重用，否则一个bucket只会有1个过期时间
+  def setExpiration(expirationMs: Long): Boolean = {
+    expiration.getAndSet(expirationMs) != expirationMs
+  }
+｝
+```
+   * Timer的三大核心功能
+      * 添加：将一个TimerTask加入到Timer
+      * 过期：时间到了，执行所有那些过期的TimeTask
+      * 取消：时间未到，取消TImeTask，把TimerTask删除
+   * TimingWheel的本质
+     * DelayedQueue
+     * 刻度盘的层次：currentTime
+
+Kafka源码深度解析－序列14 －Server核心组件之3－SocketServer与NIO－ 1+N+M 模型
+   * https://blog.csdn.net/chunlongyu/article/details/53036414
+   * 入口KafkaServer
+```java
+  def startup() {
+    try {
+
+        ...
+        //关键组件：SocketServer
+        socketServer = new SocketServer(config, metrics, kafkaMetricsTime)
+        socketServer.startup()
+
+        ...
+        //关键组件：KafkaApis
+        apis = new KafkaApis(socketServer.requestChannel, replicaManager, consumerCoordinator,
+          kafkaController, zkUtils, config.brokerId, config, metadataCache, metrics, authorizer)
+
+        ...
+        //关键组件：KafkaRequestHandlerPool
+        requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
+
+        ...
+        }
+
+        ...
+      }
+    }
+    catch {
+      case e: Throwable =>
+        fatal("Fatal error during KafkaServer startup. Prepare to shutdown", e)
+        isStartingUp.set(false)
+        shutdown()
+        throw e
+    }
+  }
+```
+   *  1 + N + M模型
+      * 1个监听线程，负责监听新的socket链接
+      * N个IO线程来负责对socket进行读写，N一般等于CPU核数
+      * M个worker线程，负责处理数据
+   * RequestChannel
+      * 1个request队列
+      * N个response队列
+```java
+      class RequestChannel(val numProcessors: Int, val queueSize: Int) extends KafkaMetricsGroup {
+
+  ...
+  //1个request Queue
+  private val requestQueue = new ArrayBlockingQueue[RequestChannel.Request](queueSize)
+
+  //N个response Queue
+  private val responseQueues = new Array[BlockingQueue[RequestChannel.Response]](numProcessors)
+  for(i <- 0 until numProcessors)
+    responseQueues(i) = new LinkedBlockingQueue[RequestChannel.Response]()
+  ...
+```
+   * KafkaRequestHandlerPool的run函数
+```java
+class KafkaRequestHandlerPool(val brokerId: Int,
+                              val requestChannel: RequestChannel,
+                              val apis: KafkaApis,
+                              numThreads: Int) extends Logging with KafkaMetricsGroup {
+  ...
+  val threads = new Array[Thread](numThreads)
+  val runnables = new Array[KafkaRequestHandler](numThreads)
+  for(i <- 0 until numThreads) {
+    runnables(i) = new KafkaRequestHandler(i, brokerId, aggregateIdleMeter, numThreads, requestChannel, apis)
+    threads(i) = Utils.daemonThread("kafka-request-handler-" + i, runnables(i))
+    threads(i).start()
+  }
+
+class KafkaRequestHandler(id: Int,
+                          brokerId: Int,
+                          val aggregateIdleMeter: Meter,
+                          val totalHandlerThreads: Int,
+                          val requestChannel: RequestChannel,
+                          apis: KafkaApis) extends Runnable with Logging {
+  this.logIdent = "[Kafka Request Handler " + id + " on Broker " + brokerId + "], "
+
+  def run() {
+    while(true) {
+      try {
+        var req : RequestChannel.Request = null
+        while (req == null) {
+          // We use a single meter for aggregate idle percentage for the thread pool.
+          // Since meter is calculated as total_recorded_value / time_window and
+          // time_window is independent of the number of threads, each recorded idle
+          // time should be discounted by # threads.
+          val startSelectTime = SystemTime.nanoseconds
+          req = requestChannel.receiveRequest(300) //从队列中取出request
+
+          val idleTime = SystemTime.nanoseconds - startSelectTime
+          aggregateIdleMeter.mark(idleTime / totalHandlerThreads)
+        }
+
+        if(req eq RequestChannel.AllDone) {
+          debug("Kafka request handler %d on broker %d received shut down command".format(
+            id, brokerId))
+          return
+        }
+        req.requestDequeueTimeMs = SystemTime.milliseconds
+        trace("Kafka request handler %d on broker %d handling request %s".format(id, brokerId, req))
+        apis.handle(req)  //处理结果，同时放入response队列
+      } catch {
+        case e: Throwable => error("Exception when handling request", e)
+      }
+    }
+  }
+}
+```
+   * mute/unmute机制：消息有序性的保证
+      * 在processor的run函数中，有一个核心机制：mute/unmute，该机制保证了消息会按照顺序处理，而不会乱序
+      
