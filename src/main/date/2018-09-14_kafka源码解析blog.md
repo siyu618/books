@@ -261,6 +261,7 @@ class ReplicaManager(val config: KafkaConfig,
 ```java
 //Timer
 class Timer(taskExecutor: ExecutorService, tickMs: Long = 1, wheelSize: Int = 20, startMs: Long = System.currentTimeMillis) {
+  ....
   //核心变量 TimingWheel
   private[this] val timingWheel = new TimingWheel(
     tickMs = tickMs,
@@ -269,7 +270,7 @@ class Timer(taskExecutor: ExecutorService, tickMs: Long = 1, wheelSize: Int = 20
     taskCounter = taskCounter,
     delayQueue
   )
-  
+
   //Timer的核心函数之1：加入一个TimerTask
   def add(timerTask: TimerTask): Unit = {
     readLock.lock()
@@ -308,7 +309,7 @@ private[timer] class TimingWheel(tickMs: Long, wheelSize: Int, startMs: Long, ta
   //核心变量之1：每个刻度对应一个TimerTask的链表
   private[this] val buckets = Array.tabulate[TimerTaskList](wheelSize) { _ => new TimerTaskList(taskCounter) }
 
-
+  ...
   //核心变量之2：parent TimingWheel
   @volatile private[this] var overflowWheel: TimingWheel = null
 
@@ -455,4 +456,19 @@ class KafkaRequestHandler(id: Int,
 ```
    * mute/unmute机制：消息有序性的保证
       * 在processor的run函数中，有一个核心机制：mute/unmute，该机制保证了消息会按照顺序处理，而不会乱序
-      
+
+Kafka源码深度解析－序列15 －Log文件结构与flush刷盘机制
+   * https://blog.csdn.net/chunlongyu/article/details/53784033
+   * 每个topic_partition对应于一个目录
+      * log.dir
+   * 文件的offset作为meissageId
+   * 变长消息存储
+   * flush刷盘机制
+      * 将数据写入文件系统之后，数据其实是在pagecache里面，并没有刷到磁盘上，如果此时操作系统挂了，数据也就丢失了。
+      * 一方面fsync系统调用强制刷盘，另一方面，操作系统后台线程，定期刷盘。
+      * log.flush.interval.message
+      * log.flush.interval.ms
+      * log.flush.scheduler.interval.ms
+   * 多线程写同一个log文件
+      * lock
+   * 数据文件分段 + 索引文件（稀疏索引）
