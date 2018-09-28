@@ -204,7 +204,7 @@ try {
    * KafkaConsumer概念
       * Consumer & ConsumerGroup
          * 分配过程
-            1. 找到Coordinator（发送给任意一个borker，找到该consumerGroup对应的Coordinator）
+            1. 找到Coordinator（发送给任意一个borker， 找到该consumerGroup对应的Coordinator）
             2. join group（向Coordinator发送join请求，返回leader节点）
             3. 同步partition分配结果（leader负责分配，其他的同步结果）
    * 创建Kafka消费者
@@ -316,13 +316,251 @@ while (true) {
       * 不需要订阅主体，自己分配partition
       * 可能需要周期性调用consumer》partitionsFor()方法来检查是否有新分区加入
    * 旧版的消费者API
- 
+
+***Chapter 5： 深入Kafka***
+   * 集群成员关系
+      * zk /brokers/ids/{01,2,5,9}
+   * 控制器
+      *  zk 节点/controller存放当前的epoch，使用epoch 来防止脑裂
+   * 复制
+      * leader replica：所有的读写请求都会来着
+      * follower replica：从leader处复制记录，与leader保持一致，leader崩溃之后，其中之一会被选为leader
+      * ISR （in sync replica）
+         * 只有在ISR中的replica才会被选为leader
+      * auto.leader.reblance.enable: 默认为true
+   * 处理请求
+      * 消息头
+         * Request type: API key
+         * Request version: broker可以处理不同版本的消息
+         * Correlation ID: 用于标志请求消息，同时也会出现在响应消息和错误日志里面
+      * broker模型
+         * 一个acceptor线程
+         * M个processor线程，放入请求队列，并从响应队列消费结果
+         * N个IO线程，消费请求队列，并将结果放入响应队列
+      * 请求类型
+         * 生产请求
+            * 生产者发送的请求，包含了客户端要写入borker的消息
+            * 请求验证
+               * 发送数据的用户是否有topic写入的权限
+               * 请求里包含的acks的值是否有效（0，1，all）
+               * 如果acks=all，是否有足够多的同步副本保证信息已经安全写入
+            * linux系统上，消息会被写到文件系统磁盘缓存里面，依赖复制功能来保证持久性
+            * 当消息给写入分区的首领之后，broker开始检查acks配置参数，如果acks为0或者1，那么broker立即返回响应；如果acks被设为all，那么请求会被保存在一个“炼狱”缓冲区中，知道leader发现所有的follower replica都发复制了该消息
+         * 获取请求
+            * 在消费者和follower replica需要从broker读取消息是发送的请求
+            * 客户端可以指定broker最多可以从一个分区里返回多少数据。
+            * 客户端也可以指定最少返回多少数据，此时有最大等待时间控制
+            * zero copy技术，kafka直接把消息从文件（或者更确切地说是linux文件系统缓存）里发送到网络通道。
+            * leader replica上的数据如果未被同步到follow replica上，则不能被consumer消费
+               * replica.lag.time.max.ms
+               * 消费者只能看到已经复制到ISR的消息
+         * 元数据请求
+            * 客户端从任意broker获取该数据，并缓存（metadata.max.age.ms）
+      * 物理存储
+         * 分区分配
+            * 考虑是否多机架
+            * 采用轮询的方式分配
+         * 文件管理
+            * segment
+            * active segment（current segment）
+         * 文件格式
+            * 除了key，value，offset，消息里面还包含了消息的大小、校验和、消息格式版本号、、压缩算法（snappy、GZip、LZ4）和时间戳（可以是producer发送消息的时间，也可以是叨叨broker的时间，可配置）。
+         * 索引
+         * 清理
+            * kafaka通过改变topic的保留策略来满足这些使用场景。早于保留时间的旧事件会被清楚，为每个键保留最新的值，从而达到清理的效果。
+               * 只有当producer生成的时间中包含键值对的时候，为这些topic设置compact策略才有意义。如果为null就会失败。
+         * 清理工作的原理
+            * 每个日志片段可以分为以下两个部分
+               1. 干净的部分：这些消息之前被清理过吗，每个键只有一个对应的值
+               2. 污浊的部分：这些消息是在上一次清理之后写入的。 
+            * 清理功能通过 log.cleaner.enabled参数来配置
+            * 为污浊的部分建立map{hash_16(key):offset(8)}，保留最新的offset
+            * 从干净的部分开始扫描，不在map中的直接写入，扫完之后将map中的写入
+            * 交换替换片段和原有的片段。
+         * 被删除的事件
+            * 墓碑消息
+         * 何时会清理
+            * compact策略不会对当前的片段进行清理
+            * 50%的磁盘使用的时候会清理，降低清理的频率
+
+***Chapter 6：可靠的数据传递***
+   * 系统有可能看起来是可靠的，实际上有可能不是。 
+   * 可靠性保证
+      * kafka可以保证分区消息的顺序。
+      * 只有当消息被写入分区的所有同步副本时(但是不一定要写入磁盘)，它才被认为是“已提交的”。
+          * 生产者可以选择接收不同类型的确认，比如消息在被完全提交时的确认，或者在消息被写入leader replica时的确认，或者在消息被发送到网络之后。
+      * 只要有一个replica还是活跃的，那么已经提交的消息是不会丢失的。
+      * 消费者只能读取已经提交的消息。
+      * 构建一个可靠的系统需要作出一些权衡，这种权衡一般是指消息存储的可靠性和一致性的重要的重要程度与可用性、高吞吐量、低延迟和硬件成本的重要程度之间的权衡。
+   * 复制
+      * Kafka的复制机制和分区的多副本架构是Kafka可靠性的核心保证
+      * 对于follower replcia来说，需要满足以下条件才被认为是同步的。
+         1. 与zk之间有一个活跃的会话， 也是就是说在过去6s(可以配置)内向ZK发送过心跳
+         2. 在过去10s（可以配置）从leader哪里获取过消息的
+         3. 在过去10s没从leader获取过最新的消息，光从leader那里获取消息还不够，它必须几乎是零延迟的。
+      * 非同步副本
+         * 如果一个或多个replica在同步和非同步状态之间来回切换，说明集群内部出现了问题，通常是Java不恰当的垃圾回收
+         * 非同步副本不会带来性能上的损失，但是意味着更低的有效复制系数，在发生宕机时丢失数据的风险更高
+      * 滞后的同步副本会导致生产者和消费者变慢
+   * broker配置
+      * 复制系数：replication.factor
+         * broker级别的是default.replication.factor（默认是3）
+         * 在于可用性和存储硬件之间做出权衡
+         * 副本的分布也很重要，在不同的broker上，在不同的机架上
+      * 不完全的首领选举：unclean.leader.election
+         * 只能在broker级别设置，实际上是集群范围内，默认为true
+         * 如果在leader replica不可用时，一个同步副本会被选为新的leader。如果在选举过程中没有数据丢失，也就是说提交的数据同时存在于所有的同步副本上，那么这个选举就是完全的
+         * 如果leader不可用时，其他的副本是不同步的
+            * 如果有3个副本，其中的两个follower不可用，这个时候如果生产者继续往leader写数据，所有消息都会被确认并提交。加入此时leader 挂了，一个follower启动成功，则其成为一个不同步副本
+            * 如果有3个副本，因为网络问题导致两个follower复制消息滞后，则出现两个不同步副本，如果这时候leader down， 两个follower都成为了不同步副本。
+         * 如果不同步的副本不能成为新的leader，则分区在旧的leader恢复之前是不可用的。
+         * 如果不同步副本可以被提升为新的leader，则存在数据丢失，数据不一致了。
+         * 在银行这样要求高一致性的系统中，该设置为false
+      * 最少同步副本：min.insync.replicas
+         * isr中至少有几个replica 同步之后才确认提交
+   * 在可靠的系统里使用生产者
+      * 需要producer和broker协作才能保证数据不丢失
+         * 根据可靠性需求配置强档的acks值
+         * 在参数配置和代码里正确处理错误
+      * 发送确认
+         * acks=0，如果生产者能够通过网络把消息发送出去，那么就确认消息成功写入kafka
+         * acks=1，如果leader replcia收到消息并写入分区数据（不一定刷盘）时，会响应确认或错误。如果此时正发生了leader选举，生产者会收到LeaderNotAvailableException异常，如果producer能正确处理该异常，如重发，最终能安全达到新leader。不过此场景仍然存在数据丢失的情况，比如信息写入leader但尚未同步到follower，此时leader挂了。
+         * acks=all，意味着leader返回确认或错误响应之前，会等待所有同步副本（ISR）返回确认。如果和min.insync.replicas参数结合起来，就可以决定在返回确认之前至少有多少个副本嫩巩固收到消息。
+      * 配置生产者的重试参数
+         * 两种错误
+            * producer可以自动处理的错误
+               * 比如LEADER_NOT_AVAILABLE，可以重试几次，没准leader已经选举出来了
+               * 重试的次数取决于系统的目标
+                  * MirrorMaker会无限次重试 retries=MAX_INT
+                  * 重试可能导致消息的重复，达到消息至少被保存一次
+                  * 如果要做到exactly once， 需要producer + broker + consumer协作，通常每个消息有一个唯一的key，则consumer可以对其处理，还有一些系统支持迷瞪性。
+            * 需要开发者手动处理的错误
+               * INVALID_CONFIG，重试也没有意义
+      * 额外的错误处理
+         * dev需要处理的错误
+            * 不可重试的broker错误，例如消息大小错误，认证错误
+            * 在消息发送之前发生的错误，例如序列化错误
+            * 在生产者达到重试次数上限或者在消息占用内存达到内存上限时发生的错误
+   * 在可靠的系统里使用消费者
+      * 在从partition读取数据的时候，消费者会获取一批事件，检测这批事件的最大偏移量，然后从这个偏移量开始读取另外的一批事件。
+      * 如果一个消费者退出，另一个消费者需要知道从什么地方开始继续处理，它需要知道前一个消费者在退出前处理的最后一个偏移量是多少。
+         * 如果一个消费者提交了偏移量，却未能消费完信息，则出现了消息丢失。
+      * 消费者的可靠性配置
+         * group.id: 同一个group信息
+         * auto.offset.reset：指定了在没有偏移量或者请求的偏移量不存在的时候，消费者的处理逻辑
+            * earliest
+            * latest
+         * enable.auto.commit: 自动提交与否
+            * 自动提交的缺点，无法控制重复处理消息，
+         * auto.commit.interval.ms：自动提交的时间间隔，默认5s/次，提交频繁会增加额外的开销，但也会降低重复处理消息的概率
+      * 显示提交偏移量
+         0. 如果希望能够更多的控制偏移量提交的时间点，那么就要考虑如何提交
+            * 要么是减少重复处理消息
+            * 要么是因为把消息处理逻辑放在了轮询之外
+         1. 总是在处理完事件后在提交偏移量
+            * 可以使用自动提交，或者在轮询结束时候进行手动提交
+         2. 提交频度是性能和重复消息数量之间的权衡
+            * 可以在循环里多次提交，也可以在循环外一次提交
+         3. 确保对提交的偏移量心里有数
+            * 在轮询中提交的可能是获取到的数据的最大的偏移量，而不是消费到的偏移量
+         4. 再均衡（Rebalance）
+            * 需要分区被撤销之前提交偏移量，并在分配新分区的时候清理之前的状态
+         5. 消费者可能需要重试
+            * 在进行轮询之后，有些消息不会被完全处理，而提交的是偏移量，而不是对消息的确认。（存在31被正确处理了，而30还没又被成功处理）
+            * 第一种解决模式：在遇到可重试错误时候，提交最后一个处理成功的消息的偏移量，然后把还没有处理好的消息保存到缓冲区里（这样下一次轮询不会被覆盖掉），调用消费者的pause（）来保证其他的轮询不会反悔数据，在保持轮询的时候需要尝试重新处理（不能停止轮询）。如果成功或者重试达到上限并决定放弃，则记录并丢弃消息，然后调用消费者的resume()让消费者继续从轮询中获取新数据
+            * 第二种解决模式：遇到可重试错误时，把错误写入一个独立的topic，然后继续。为这个独立的topic配置一个独立的消费者群组（dead-letter-queue），重试时需要暂停该主题。
+         6. 消费者可能需要维护状态
+            * 可以使用kafka stream，其提供了保存状态
+            * 或者其他的流式处理平台
+         7. 长时间处理
+            * 如果一个消息要处理很长时间，导致轮询被暂停了，会出问题。因为轮询中有heart-beat
+            * 可以用单独的线程池处理请求
+         8. 仅一次传递
+            * 幂等性写入：将结果放入到支持唯一键的系统里。
+            * 如果消息系统知识事物，则可以使用acid来保证，client自身维护偏移+seek()
+   * 验证系统可靠性
+      * 三个层面的验证：配置验证、应用程序验证和生产环境的应用程序监控
+      * 配置验证
+         * 对broker和客户端的配置进行验证
+         * 验证配置是否满足你的需求
+         * 帮助理解系统的行为，了解系统的正真行为是什么，了解对kafka基本准则是否存在偏差，然后加以改进，同时了解这些准则是如何被应用到各种场景中的。
+         * kafka提供了org.apache.kafka.tools.{VerifiableProducer,VerifiableConsumer}  
+         * 运行测试
+            * leader election：如果leader down，需要多久producer和consumer才能恢复
+            * controller election：重启控制器之后系统需要多长时间能恢复
+            * 依次重启：可以依次重启borker而不丢失数据不？ 
+            * 不完全leader election测试：如果依次停止所有replica（确保每个副本变为不同步的），然后启动一个不同步的broker会发生什么？要怎样才能恢复正常？这样做是可以接受的么？
+      * 应用程序验证
+         * 集成测试
+         * 故障测试：
+            1. 客户端从服务器断开连接
+            2. leader election
+            3. 依次重启broker
+            4. 依次重启consumer
+            5. 依次重启producer
+      * 在生产环境监控可靠性
+         * kafka的java客户端JMX度量指标
+            * producer的error-rate和retry-rate
+            * producer日志中的剩余重试次数为0
+            * consumer：consumer-lag，表明消费者处理速度与最近提交到分区里的偏移量之间还有多少差距
+            * 监控数据流，确保所生成的数据被及时的消费了
+
+***Chapter 7: 构建数据管道*** 
+   * 构建数据管道时需要考虑的问题
+      * 及时性
+      * 可靠性
+         * 至少传递一次
+         * 仅传递一次
+      * 高吞吐量和动态吞吐量
+      * 数据格式
+      * 转换
+         * ETL：extract-Transform-Load
+            * 管道负责处理数据，
+         * ELT：extract-Load-transform
+            * 高保真
+      * 安全性
+         * 支持认证
+      * 故障处理能力
+      * 耦合性和灵活性
+         * 临时数据管道
+         * 元数据丢失
+         * 末端处理
+   * 如何在connect API和客户端API之间进行选择
+      * 首选connect，因为其提供了一些开箱即用的特性：配置管理、偏移量处处、并行处理、错误处理，而且支持多种数据类型的REST管理API
+   * Kafka Connect
+      * 运行Connect
+         * bin/connect-distributed.sh config/connect-distributed.properties （单机standalone 运行不起来。。。）
+            * bootstrap.servers
+            * group.id
+            * key.converter & value.converter
+      * 连接器示例：文件数据源&文件数据池 & 连接器示例：从mysql到ES
+         * 从源导数据到kafka topic（由转化器转换数据），并且从该topic导出数据到dest
+      * 深入理解Connect
+         1. 连接器和任务
+            * 连接器：
+               * 决定需要多少个任务
+               * 按照任务来才分数据复制
+               * 从worker进程获取任务配置并将其传递西区
+            * 任务
+               * 负责将数据移入或移出kafka
+         2. worker进程
+            * 是连接器和任务的“容器”，
+         3. 转化器和Connect的数据模型
+         4. 偏移量管理
+   * Connect之外的选择
+      * 用于其他数据存储的摄入框架
+         * Flume，Logstash，Fluentd
+      * 给予图形界面的ETL工具
+      * 流式处理框架
+
+***Chapter 8：跨集群数据镜像***
 
 
+***Chapter 9：管理kafka***
 
+***Chapter 10：监控Kafka***
 
-
-
+***Chapter 11：流式样处理***
 
 
 
