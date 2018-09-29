@@ -6,7 +6,7 @@ Kafka 权威指南
    * Kafka登场
       * Record & Batch
       * Pattern
-      * Topic & Patition
+      * Topic & Partition
       * Producer & Consumer
       * Borker & Cluster
       * Multi-cluster
@@ -554,13 +554,162 @@ while (true) {
       * 流式处理框架
 
 ***Chapter 8：跨集群数据镜像***
-
+   * 不同部门有不同的集群，对于SLA有不同的要求，工作负载也不同
+      * 为每个业务创建单独的集群， 管理多个集群本质上就是重复多次运行单独的集群
+      * Kafka MirrorMaker VS. 数据库复制
+   * 跨集群镜像的使用场景
+      * 区域集群和中心集群
+         * 每个地方有一个区域集群，然后又有一个中心集群（会镜像各个区域集群的数据）
+      * 冗余（DR）
+         * 数据冗余
+      * 云迁移
+         * 本地和每个云服务区都会有一个Kafka集群
+   * 多集群架构
+      * 跨数据中心通信的一些现实情况
+         * 高延迟
+         * 有限的带宽
+         * 高成本
+            * 带宽价格高
+         * 架构原则
+            1. 每个数据中心至少需要一个集群
+            2. 每两个数据中心的数据复制要做到每个事件仅一次（除非出现错误需要重试）
+            3. 如果有可能，尽量从远程数据中心读取数据，而不是向远程数据中心写入数据
+      * Hub和Spoke架构
+         * 一个中心，多个地域
+         * 变体：一个leader， 一个follower
+         * 优点：数据只会在本地的数据中心生成，而且每个数据中心只会被镜像到重要数据中心一次；易于部署、配置和监控
+         * 缺点：一个数据中心无法访问另一个数据中心的数据
+      * 双活架构
+         * 当有两个或多个数据中心需要共享数据并且每个数据中心都可以生产和读取数据的时候，可以使用双活（Active-Active）架构
+            * 优点
+               * 为就近的用户服务，获得性能上的优势，而且不会因为数据的可用性问题在功能方面做出牺牲
+               * 冗余和弹性：一种简单透明的实效备援方案
+            * 缺点
+               * 如何在进行多个位置的数据异步读取和异步更新是避免冲突
+                  * 比如镜像技术：如何确保同一份数据不会永无止境的来回镜像（不同的命名空间+filter）
+               * 数据一致性问题
+                  * 向第一数据中心写，之后向第二个数据中心读取，可能读不到；解决方案，将用户粘在某一个数据中心
+                  * 用户在一个数据中心订购A，而第二个数据中心几乎同时受到了订购B的订单，在经过镜像之后，每个数据中心都有了A和B；解决方案，在两个数据中心之间定义一致的规则，用于确定哪个才是正确的。
+      * 主备架构
+         * Active-Standby
+         * 优点：易于实现
+         * 缺点：浪费了一个集群
+      * 实效备援包括的内容
+         1. 数据丢失和不一致性：异步的解决方案，存在丢失数据的可能
+         2. 实效备援之后的起始偏移量
+            * 偏移量自动重置
+            * 复制偏移量topic
+            * 基于时间的实效备援：通过时间去索引寻找
+            * 偏移量外部映射 ： 外部存储
+         3. 失效备援之后
+            * 原有主机群清理，且变为灾备集群
+         4. 关于集群发现
+            * zk， etcd，consul
+      * 延展集群（Stretch Cluster）：跨越多个数据中心安装多个kafka集群
+         * min.isr, acks=all
+         * 同步复制是这种架构的最大优势
+         * 至少要有3个具有高带宽和低延迟的数据中心上安装kafka和zk
+   * Kafka的Mirror Maker
+      * 镜像过程
+         * MirrorMaker为每个消费者分配一个线程，消费者从源集群的topic和partition上读数据，然后通过公共生产者将数据发送到目标集群。
+         * 默认情况下，消费者每60s通知生产者发送所有的数据到kafka，并等待kafka的确认
+         * 然后通知源集群提交相应的偏移量
+      * 配置
+         * consumer.config
+         * producer.config
+         * new.consumer
+         * nums.streams
+         * whitelist
+      * 生产环境部署MirrorMaker
+         * 度量指标
+      * 调优
+         * tcp缓冲区大小的增加
+         * 词用时间窗口自动伸缩
+         * 减少tcp慢启动时间
+         * max.in.flight.requests.per.connection:默认只允许一个处理中的请求
+         * linger.ms和batch.size
+         * 提升消费者吞吐量
+            * range
+            * fetch.max.bytes
+            * fetch.min.bytes和fetch.max.wait
+   * 其他跨越集群镜像方案
+      * uber的uReplica
+      * Confluent的Replica 
 
 ***Chapter 9：管理kafka***
+   * topic工具 kafka-topic.sh
+      * --create
+      * --alter
+      * --delete
+      * --list
+      * --describe
+   * 消费者群组 kafka-consumer-group.sh
+      * --list
+      * --describe
+      * --delete
+   * 动态配置变更 kafka-config.sh
+      * --alter add/delete
+   * 分区管理
+      * 首选的首选首领
+         * 自动首领再均衡
+      * 修改分区副本
+      * 修改复制系数
+      * 转处日志片段
+      * 副本验证
+   * 生产和消费
+   * 客户端ACL
+   * 不安全的操作
+      * bad idea：修改zk上的数据
+      * 移动集群控制器
+      * 取消分区重分配
+      * 溢出待删除的topic
+      * 手动删除topic
+
 
 ***Chapter 10：监控Kafka***
+   * 度量指标基础
+      * JMX（Java Management Extensions）
+      * 内部度量或外部度量（可用性或延迟）
+      * 应用程序健康监测
+         * 使用外部进程来报告broker的运行状态（健康监测）
+         * 在broker停止发送度量指标时发出报警（stale度量指标）
+      * 度量指标的覆盖面
+   * broker的度量指标
+      * 非同部分区
+         * 集群级别问题
+         * 主机级别问题
+      * broker度量指标
+         * 活跃控制器数量
+         * 请求处理器空闲率
+         * topic流入字节
+         * topic流出字节
+         * topic流入的消息
+         * 分区数量
+         * leader数量
+         * 离线分区
+         * 请求度量指标
+      * topic和partition的度量指标
+      * java虚拟机监控
+         * GC
+         * java操作系统监控
+      * OS操作系统监控
+         * 系统负载
+            * 平均负载：等在处理器执行的线程数
+      * 日志
+   * 客户端监控
+      * 生产者度量指标
+         * 生产者整体度量指标
+         * per-broker和per-topic度量指标
+      * 消费者度量指标
+         * fetch manager度量
+         * per-broker和per-topic度量
+      * Coordinator度量指标
+      * 配额
+   * 延时监控
+   * 端到端监控
 
 ***Chapter 11：流式样处理***
+   * 
 
 
 
