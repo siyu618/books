@@ -3,8 +3,8 @@
    * [detail](Kafka.md)
 2. [RocketMQ](http://rocketmq.apache.org/)
    * [detail](RocketMQ.md)
-3. [Plusar](http://pulsar.apache.org)
-   * [detail](Plusar.md)
+3. [Pulsar](http://pulsar.apache.org)
+   * [detail](Pulsar.md)
 
 ### Q & A
 1. 这几个的各有什么特点
