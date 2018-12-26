@@ -1,6 +1,6 @@
 Java Reactor VS Proactor
 
-#### Q: 为什么java NIO比BIO性能要好？
+#### Q: 为什么java NIO 比 BI O性能要好？
 这个问题说的有点绝对了，的确在一些场景下NIO要比BIO的性能要好不少。
 对于每个请求的处理时间较短（或者说每个请求的处理较为简单）的场景 ，使用NIO性能有较为显著的提升，单机QPS也有较大的提升，举个例子，redis server 使用单线程的 reactor，单机能扛到万级别的qps。
 

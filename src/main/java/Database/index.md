@@ -4,7 +4,11 @@
    * Oracle
    * SQL Server
 2. [NoSQL](https://en.wikipedia.org/wiki/NoSQL)
-   * Redis
+   * [Redis](https://redis.io/)
+      * client
+         * [jedis](https://github.com/xetorthio/jedis)
+         * [lettuce](https://lettuce.io/)
+         * [redission](https://github.com/redisson/redisson)
    * MongoDB
 3. [NewSQL](https://en.wikipedia.org/wiki/NewSQL)
    * TiDB
