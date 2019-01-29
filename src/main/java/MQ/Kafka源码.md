@@ -7,7 +7,7 @@
       * brokerState 标记为 BrokerShuttingDown
       * 关闭 dynamicConfigManager
       * socketServer 停止处理请求
-      * 关闭 requestHanderPool
+      * 关闭 requestHandlerPool
       * 关闭 kafkaScheduler
       * 关闭 kafkaApis
       * 关闭 authorizer
