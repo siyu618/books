@@ -1,4 +1,6 @@
-### Kafka
+
+## 1. Kafka Server
+### 1. Kafka Server 
 1. Kafka shutdown
    * isStartingUp：正在启动，则抛出异常
    * 如果 shutdownLatch>0 && isShuttingDown.compareAndSet(false, true) 则进行 shutdown
@@ -72,14 +74,14 @@
       * isStartingUp.set(false)
 
 
-### socketServer.startup(startupProcessors = false)
+### 2. socketServer.startup(startupProcessors = false)
 * 获取 对象锁，创建 acceptor 和 processors
    * acceptor： 负责处理外部链接，并未每个链接分配一个 processor，并加入到 processor 的 newConnections 队列
       * nioSelector
       * serverChannel
       * processors：轮转分配处理 acceptor 的连接
       
-### socketServer.startProcessors()
+### 3. socketServer.startProcessors()
 * processor 对象的成员
    * newConnections 队列
    * inflightResponses map
@@ -108,7 +110,7 @@
    * processCompletedSends()
    * processDisconnnected()
 
-### requestHandler pool ： requestHandler
+### 4. requestHandler pool ： requestHandler
 1. 死循环 从 requestChannel 的 requestQueue 中获取 request
 2. 两种请求
    * ShutdownRequest：等待 shutdownComplete.countDown
@@ -116,8 +118,8 @@
       * 调用 apis.handle(reqeust)
 
 
-## Kafka APIS
-### handleProduceRequest: ApiKeys.PRODUCE
+## 2. Kafka APIS
+### 1. handleProduceRequest: ApiKeys.PRODUCE
 1. 首先判定是否是 事务 且 是授权失败，则返回
 2. 其次判定是否是 幂等 且 授权失败，则返回
 3. 过滤出 未授权（unauthorizedTopicResponse） 和 不存在的（nonExistingTopicResponse） 和 可以正常处理的数据（authorizedRequestInfo）
@@ -167,7 +169,7 @@
       4. 否则：立即调用回调函数 responseCallback 即 sendResponseCallback
 6. 清理 produceRequest
       
-### handleFetchRequest: ApiKeys.FETCH  
+### 2. handleFetchRequest: ApiKeys.FETCH  
 1. 构建 fetchContext
    * 对于来自 follower 的请求：have clusterAction on cluster resource   
    * 对于来自 consumer 的请求：have READ permission 
