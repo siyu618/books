@@ -31,8 +31,8 @@
    * startupComplete : 已经启动，则退出
    * isStartingUp.compareAndSet(false, true) 为 false 表示已经在启动，则退出
    * 启动
-      * borkerState 标记为 Starting
-      * setup Zookeeper： initZKclient
+      * brokerState 标记为 Starting
+      * setup Zookeeper： initZKClient
          * chroot，创建 zkClient，创建zk中顶级路径
       * get or create ClusterId ： getOrGenerateClusterId
       * generate brokerId：getBrokerIdAndOfflineDirs
@@ -89,7 +89,7 @@
 * run：死循环处理
    * configureNewConnections() ：处理新的连接
       * channel = newConnections.poll()
-      * selector.regiter(xxx, channel)
+      * selector.register(xxx, channel)
    * processNewsResponses()：处理 responseQueue 中的数据
       * 循环 dequeue responseQueue
       * 设置每个 channel 的 send，每次只能发送一个数据
@@ -182,8 +182,8 @@
 4. replicaManager.fetchMessages(): 从 leader replica 读取数据，等待数据或者超时的发生
    * readFromLocalLog
       * 对每个 topicPartition 调用 read
-         * 决定是否只从 leader relica 读取数据
-         * 决定是否只读取 commited 的数据还是 high watermark的数据
+         * 决定是否只从 leader replica 读取数据
+         * 决定是否只读取 committed 的数据还是 high watermark的数据
          * 获取 logReadInfo
             * log.read（）：从 log 读取数据
                * 获取 startOffset 对应的 segmentEntry
