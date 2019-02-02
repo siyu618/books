@@ -8,9 +8,121 @@
 
 Kafka源码深度解析－系列1 －消息队列的策略与语义
    * https://blog.csdn.net/chunlongyu/article/details/52538311
+   * 关键概念：
+      * topic: 逻辑的数据队列
+      * broker：Kafka 集群的节点
+      * partition：topic 分成多个 partition，用来提升并发
+      * replica/leader/follower： acks
+   * 消息队列的各种语义
+      * Producer 的策略
+         * acks：0（不等服务器返回ack），1（leader 确认消息存下来后再返回）， all（leader 和当前 ISR 中所有的 replica 都确认消息存下来，再返回）
+         * 同步发送 VS. 异步发送
+      * Consumer 的策略
+         * Push VS. Pull : Long pulling
+         * 消费的 confirm：offset
+      * Broker 的策略
+         * 消费顺序的问题
+         * 消息的刷盘机制：page cache、fsync 存盘
+      * 消息的不重不漏
+         * 完美的消息队列，不漏不重
+            * 消息不会重复存储（解决 > 1 ）：代价很大，一个思路每个消息一个primeKey，在broker端去重
+            * 消息不会重复消费（解决 > 1 ）：需要消息的 confirm
+            * 消息不会丢失存储（解决 < 1 ）：replica
+            * 消息不会丢失消费（解决 < 1 ）：需要 confirm
+         * exactly once：真正做到不重不漏，exactly once，是很困难的，需要 broker、producer、consumer 和 业务方 的配合。
+         * kafka 保证不漏，就是 at least once
 
 Kafka源码深度解析－序列2 －Producer －Metadata的数据结构与读取、更新策略
    * https://blog.csdn.net/chunlongyu/article/details/52622422
+   * 多线程异步发送模型
+      * 基本思路：发送的时候，KafkaProducer 将消息放入本地消息队列 RecordAccumulator，然后一个后台的线程 Sender 不断循环，将消息发送给 Kafka 集群。
+         * 前提条件：Producer 和 Sender 都需要获取 Metadata。所谓 Metadata，就是 Topic/Partition 与 broker 的映射关系：每个 topic 的 partition ，得知其 broker 列表是啥，leader 是谁，follower 是谁。
+      * 两个数据流
+         * Metadata 流：Sender 从集群获取信息。KafkaProducer 从 Metadata 获取数据，然后放入队列。
+         * Producer 将消息放入 RecordAccumulator，Sender 从 RecordAccumulator 读取数据，发送给 Kafka 集群。  
+   * Metadata 的线程安全性
+      * Metadata 的方法都是 synchronized
+   * Metadata 的数据结构
+      * cluster + 状态
+   * Producer 读取 Metadata： waitOnMetadata
+      * 如果缓存中有，直接返回；同时需要保证当前记录的 partition 为 null，或者在合法的范围内。
+      * 否则一直等待获取到数据，期间可能抛出异常。
+         * metadata.awaitUpdate(version, remainingWatiTimeMs)
+            * 直到当前版本高于已知的版本
+            * wait() ; // 等待 sender 的 notify
+   * Sender 的创建
+      * KafkaProducer 中的一个线程
+   * Sender 的 poll()：Sender.run(long now)
+      * 处理 事务，如果是事务的话。
+      * sendProduceData(long now)
+         * recordAccumulator.ready(): 
+            * 获取可以发送的节点列表
+            * 不可发送的变为可以发送的时间
+            * 不知道 leader 节点的 topic 列表
+         * 更新 不知道 leader 节点 的 metadata
+         * 删除没有准备好的节点
+         * 从 accumulator 中获取 可以发送的 batches
+         * 如果需要保证发送顺序：
+            * 将这些 batch 的 topicPartition mute
+         * 获取 在 inFlightBatches 中过期的 batch：expiredInFlightBatches
+         * 获取 accumulator 中过期的 batches： expiredBatches
+         * 将 batch：expiredInFlightBatches 加入到 expiredBatches
+         * update metrics
+         * sendProduceRequests(batches, now)
+            * sendProduceRequest(new, id, acks, reqeustTimeoutMs, List<ProducerBatch)
+               * 按照 topicPartition 分好，并且对于 record 做必要的转换 magic number
+               * client.send(clientRequest, now)
+                  * doSend(request, isInternalRequest=false, now)
+                     * doSend(clientRequest, isInternalRequest, now, builder.build(version)
+                        * 构建 send 对象
+                        * 构建 InFlightRequest，放入 inFlightRequests 中
+                        * selector.send(send)
+                           * channel.setSend(send)
+      * client.poll(poolTimeout, now)
+         * 如果 abortedSends 非空，则处理之并返回
+            * handleAbortedSends()
+            * completeResponses()
+               * 调用回调函数
+         * 更新 metadata 数据
+         * selector.poll()：处理实际的 IO 事件
+            * poll from 有缓存数据的 channel
+               * 处理 read、write（completedSends）
+            * poll from socket 有数据的 channel
+            * poll from 连接事件
+            * 关闭老的连接 maybeCloseOldestConnection(endSelect)
+            * addToCompletedReceives()
+               * 处理 stagedReceives
+         * handleCompletedSends
+            * this.inFlightRequests.completeLastSent(send.destination())
+               * 取出 first
+            * 构建 response
+         * handleCompletedReceives
+            * 处理 metadataResponse
+            * 处理 apiVersionResponse
+            * 处理 produceRequest 的 response
+         * handleDisconnections
+            * 处理失效的链接
+         * handleConnections
+            * 处理新的链接
+         * handleInitiateApiVersionRequests
+            * 处理新的 apiversion 请求
+         * handleTimeoutRequests
+         * handleResponses
+            * 调用回调函数
+   * Metadata 的两种更新机制
+      * 周期性更新：每隔一段时间更新一次
+      * 失效检测，强制更新；
+      * 每次 poll 的时候都会检查这两种机制，hit 了就触发更新
+   * Metadata 的实现检测
+      * 条件1：initConnect 的时候
+      * 条件2：poll 里面 IO 的时候，连接断掉了
+      * 条件3：有请求超时
+      * 条件4：发消息的时候，有 partition 的 leader 没有找到
+      * 条件5：返回 response 和请求对不上的时候            
+   * Metadata 其他的更新策略
+      * 更新请求 MetadataReqeust 是 NIO 异步发送的，在 poll 返回，处理 MetaDataResponse 的时候才真正更新 metadata
+      * 更新的时候，是从 metadata 中保存的所有 Node 或者说是 broker 中选择负载最小的，向其发送 MetadataReqeust 请求，获取新的 Cluster 对象。
+
 
 Kafka源码深度解析－序列3 －Producer －Java NIO
    * https://blog.csdn.net/chunlongyu/article/details/52636762
