@@ -351,7 +351,28 @@ Kafka源码深度解析－序列8 －Consumer －Fetcher实现原理与offset确
    * 手动消费确认与自动消费确认
       * 手动：KafkaConsumer.commitSync Vs commitAsync（OffsetCommitCallback）
       * 自动：周期性的提交，DelayedQueue + delayedTask
-
+   * KafkaConsumer 的几个核心部件
+      * Metadata 
+      * NetworkClient
+      * ConsumerNetworkClient: 对 networkclient 的封装
+      * ConsumerCoordinator：负责 partition 的分配，rebalance
+      * SubscriptionState：订阅的 topicPartition 的 offset 状态维护
+      * Fetcher：获取消息
+   * Fetcher 流程介绍
+   * offset 初始化 - 手动指定 VS. 自动指定
+      * 手动：seek(topicPartition, offset)
+      * 自动：向服务器获取 offset （OffsetFetchReqeust），然后指定
+   * Fetch 核心流程分析
+      * 步骤 1： 生成 fetch request
+         * 把所有属于同一个 node 的 topic partition 读取请求放在一起，生成一个 FetchRequest
+      * 步骤 2：poll 
+      * 步骤 3：fetcher.fetchedRecords()
+   * 手动消费 VS. 自动消费
+      * 手动：commitSync VS. commitAsync
+      * 自动： DelayedQueue + DelayedTask，参考 heartbeat
+       
+      
+      
 Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构分析
    * https://blog.csdn.net/chunlongyu/article/details/52806408
    * 两种订阅策略
