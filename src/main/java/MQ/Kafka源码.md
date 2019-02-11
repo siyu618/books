@@ -264,7 +264,7 @@
                                        * sendSyncGroupRequest ：向 coordinator 返回分配结果（非空结果）
                                           * SyncGroupResponseHandler
                                              * 保存分配结果
-                                    * 否则是 follower： onJoingFollower
+                                    * 否则是 follower： onJoinFollower
                                        * sendSyncGroupRequest：返回分配结果（空结果）
                              * 激活 heartbeat 线程
             * 否则是手动分配则等待 metadata
