@@ -215,7 +215,7 @@
 2. KafkaProducer.send(ProducerRecord<K,V> record, Callback callback)
    * interceptedRecord = this.interceptors.onsend(record)
    * doSend(interceptedRecord, callback)
-      * 如果 prodcuer 关闭就退出
+      * 如果 producer 关闭就退出
       * 获取 topic 对应的 metadata：waitOnMetadata（）
       * 序列化 key 和 value
       * 计算 record 对应的 partition：partition（）
