@@ -133,13 +133,126 @@ Kafka源码深度解析－序列3 －Producer －Java NIO
       * ET：边缘触发（状态触发），读缓冲区的状态从空转为非空的时候触发一次，写缓冲区由满转为非满的时候触发一次
          * 需要避免“short read”事件，一定要把缓冲区读取完。
          * 仅仅适用于NIO
+   * 分层
+      * 调用层：Send
+      * Network 接口层：ClientReqeust/ClientResponse KafkaClient
+      * Network 层：Send/Receive、network.Selector、KafkaChannel
+      * Java NIO 层： Buffer、java.nio.channels.Selector、Channel
+   * NIO 四大组件
+      1. Channel
+         * Channel：在通常的 Java 网络编程中，有一对 Socket/ServerSocket 对象，在 NIO 中是 SocketChannel/ServerSocketChannel
+      2. Buffer
+      3. Selector : 主要目的是网络事件的 loop 循环，通过调用 selector.poll() 不断轮询每个 Channel 上的事件
+      4. SelectionKey：用来记录一个 Channel 上的事件集合，每个 Channel 对应一个 SelectionKey
+         * SelectionKey 是 Selector 与 Channel 之间的关联，通过 SelectionKey 可以得到 Selector 和 Channel
+   * 4 种网络 IO 模型
+      * 阻塞 IO：read/write 的时候，阻塞调用
+      * 非阻塞 IO：read/write ，没有数据的时候，立马返回
+      * IO 复用：read/write 一次都只能监听一个 socket，但对于服务器来讲，有成千上万个 socket 连接，如何用一个函数来监听所有 socket 上的事件？这就是 IO 服用模型，在 Linux 上就是 select/poll/epoll 3 种技术
+      * 异步 IO：Linux 上没有，windows 上对应的是 IOCP
+   * Reactor 模式 VS. Preactor 模式
+      * Reactor 模式：主动模式，所谓主动，是指应用程序不断去轮询，问操作系统， IO 是否就绪。linux 下 select/poll/epoll 就属于主动模式，需要在应用程序中有个循环，一直去 poll。
+         * 在这种模式下，实际的 IO 操作还是应用程序去做的。
+      * Proactor 模式：被动模式，你把 read/write 全部交给系统去处理，实际的 IO 由操作系统去做，完成之后回调你的应用程序。Windows 下的 IOCP 就属于这种模式，再比如 C++ Boost 的 Asio 库，就是典型的 Proactor 模式。
+   * epoll 的编程模型：3 个阶段               
+     
+||Java NIO|epoll|     
+|---|---|---|
+|注册|channel.register(selector, xxx) selectionKey.interOps = xxx|epoll_ctr(...)|
+|轮询|selector.poll()|epoll_wait(...)|
+|实际 IO 操作|channel.accept、channel.read、channel.write|accept、read、write|
 
+||注册|轮询|实际 IO 操作|
+|---|---|---|---|
+|connect|socketChannel.connect(address), selectionKey = socketChannel.register(nioSelector,SelectionKey.OP_CONNECT)|nioSelector.select(ms), keys = this.nioSelector.selectedKeys(); key.isConnectable()|channel.finishConnect()|
+|accept|severChannel.regitster(nioSelector,SelectionKey.OP_ACCEPT)|key.isAcceptable()|channel = serverSocketChannel.accept()|
+|read|key.interestOps(key.interestOps() \| SelectionKey.OP_READ) |key.isReadable()|channel.read(buffer)|
+|write|key.interestOps(key.interestOps() \| SelectionKey.OP_WRITE)|key.isWriteable()|channel.write(buffer)|
+
+   * epoll 和 selector 在注册上的差别：LT & ET 模式
+      * LT：水平触发(条件触发)，只要读缓冲区不为空就一直触发事件；写缓冲区不满就一直触发事件。epoll 的缺省模式。
+      * ET：边缘触发(状态触发)，读缓冲区的状态从空转为非空的时候触发一次；写缓冲区的状态从满转为非满的时候，触发一次。
+      * 对于 LT 需要避免“写的死循环”问题：写条件会一直满足。写完数据之后需要取消写事件。
+      * 对于 ET 需要避免“short read”问题。一定要把缓冲区读完。
+      * LT 适用于阻塞和非阻塞，ET 只适用于非阻塞。
+      * epoll 缺省使用的是 LT 模式，而 Java NIO 用的就是 epoll 的 LT 模式。
+   * connetct/read/write
+      * connect 注册：scoektChannel.regitster(nioSelector, SelectionKey.OP_CONNECT)
+      * connect 取消：key.interestOps(key.interestOps() & ~SelectionKey。OP_CONNECT | SelectionKey.OP_READ)
+      * read 注册：是和 connect 事件的取消是同时进行的。
+      * read 取消：epoll LT 模式。
+      * write 注册：KafkaChannel.setSend(Send) {this.transportLayer.addInterestOps(SlectionKey.OP_WRITE)}
+      * write 事件的取消：if (send.completed()) transportLayer.removeInterestOps(SelectionKey.OP_WRITE)
+   * 总结：
+      * 事件就绪：对于不同的事件类型，还是有歧义的
+         * read 事件就绪，就是有远程数据到来，需要去 read。因为是 LT 模式，只要缓冲区有数据就会触发。
+         * write 事件就绪：其实指本地缓冲区没有满。没有满的话就会一直触发写事件。所以要避免“写的死循环”问题，写完，要取消些事件。
+         * connect 事件就绪：指 connect 连接完成。
+         * accept 事件就绪：有新的连接进来，调用 accept 处理
+      * 不同类型的事件，处理方式是不一样的
+         * connect 事件：注册一次，成功之后就取消了。有且仅有一次。
+         * read 事件：注册之后不取消，一直监听。
+         * write 事件：每调用一次 send，注册一次。send 成功之后，取消注册。
+
+      
+        
 Kafka源码深度解析－序列4 －Producer －network层核心原理
    * https://blog.csdn.net/chunlongyu/article/details/52651960
-
+   * network 层的分层架构
+      * 客户端：RecordAccumulator、KafkaProducer、Sender
+      * 网络接口层：KafkaClient
+      * 网络实现层：Selectable、Send、ChnnelBuilder、network.Selector
+      * NIO 层：nio.Selector
+   * network 层组件与 NIO 组件的映射关系
+      * KafkaChannel 是对 SocketChannel 的封装，中间多了一个 TransportLayer
+      * Send/NetwrokReceive 是对 ByteBuffer 的封装，表示一次请求包
+      * Kafka 的 Selector 封装了 NIO 的 Selector，内含一个 NIO Sealector对象。
+   * Kafka Selector 的实现思路
+      1. Selector 内包含一个 Map<String, KafkaChannel> channels;
+      2. 所有的 IO 操作：connect、read、write 其实都是在 poll 这个函数中完成。
+      3. 核心原理 1：消息的分包
+         * 非阻塞发送。      
+         * 非阻塞接收。
+      4. 核心原理 2：消息的分界
+         * send 的时候知道消息的大小。
+         * receive 的时候也是知道大小的，由协议规定。
+      5. 核心原理 3：消息时序保证
+         * client：InFlightReqeusts 中，存放了所有发出去但是还没有收到 response 的 request。request 发送的时候入队，接收到 response 的时候出队。发出去是 0、1、2，接收的时候必须是 0、1、2.
+         * 但是服务器端是 1+N+M 模型，所有的请求进入一个 requestQueue，然后并行多线程处理，这里是通过 mute/unmute 机制：当一个 reqeust channel 接收到一个 reqeust，这个 channel 就会 mute，然后等 response 返回之后就 unmute，这就保证同一个连接上面，同时只会有一个请求被处理。
+   * NetworkClient 实现思路
+      1. Selector 维护了所有连接的连接池，所有的连接上、消息的发送和接收都是通过 poll 函数进行的。
+      2. 一个 channel 一次只能存一个 send 对象
+         * 关键的 client.ready 函数：符合以下几个条件
+            * metadata 正常不需要 update
+            * 连接正常 connectionStates.isConnectable(node)
+            * channel 是 ready 状态
+            * 当前该 channel 中，没有 inFlight reqeust
+            * 当前 channel 中，队列尾部的 reqeust 完全发送出去，并且 inflight reqeust 队列没有超过最大的数目，
+   * 连接检测 & 自动重连
+      * 检测连接断开的手段
+         1. IOException：connect、finishConnect、read、write
+         2. selectionKey.isValid
+         3. inflightReqeusts 所有发出去的 reqeust，都设置一个 response 返回时间，在这个时间内没有返回就认为连接断了。
+      * 检测时机
+         1. 建立连接的时候
+         2. 每个 poll 的时候
+      * 自动重连：ready 函数判断 node 是否可用
+         1. 不能是 connecting 状态，不许是 disconnected
+         2. 重连不能太频繁  
+         
 Kafka源码深度解析－序列5 －Producer －RecordAccumulator队列分析
    * https://blog.csdn.net/chunlongyu/article/details/52704213
-
+   * batch 发送
+      * Record， RecordAccumulator
+      * 每个 topicPartition 一个队列 RecordAccumulator: ConcurrentMap<TopicPartition, RecordBatch> batches ;
+      * batch 的策略
+         1. 如果是同步发送，每次去队列取，RecordBatch 都为空。这个时候消息就不会 batch，一个 record 形成一个 RecordBatch
+         2. Producer 入队速率 < Sender 出队速率 && lingerMs = 0， 消息不会被 batch
+         3. Producer 入队速率 > Sender 出队速率，消息会被 batch
+         4. lingerMs > 0，这个时候 Sender 会等待，知道 lingerMs > 0 或者队列满了，或者超过一个 recordBatch 的最大值，就会发送。
+   * 为什么是 Dequeue
+      * 为了处理发送失败、重试的问题，此时顺序就不能保证了。
+      
 Kafka源码深度解析－序列6 －Consumer －消费策略分析https://blog.csdn.net/chunlongyu/article/details/52791874 
    * https://blog.csdn.net/chunlongyu/article/details/52663090   
    * comsumer group 两种模式
@@ -160,7 +273,33 @@ Kafka源码深度解析－序列6 －Consumer －消费策略分析https://blog.
          * 禁用自动ack： "enable.auto.commit", "false"
          * 将每次消费的ComsumerRecord 存下来
          * 下次重启还是从记录下来的offset开始消费，seek(topic_patition, long)
-
+   * Consumer 的非线程安全
+      * KafkaProducer 是线程安全的。
+   * Consumer Group ： 负载均衡模式 VS. Pub/Sub 模式
+      * group.id 指定了广播还是分摊消费。
+      * 负载均衡模式：多个 consumer 属于同一个 group，则 topic 对应的 partition 的消息会分摊到这些 consumer 上。
+      * Pub/Sub 模式：多个 consuemr 属于不同的 group，则这个 topic 的所有消息会被广播到每个 group
+   * Partition 自动分配 VS. 手动分配
+      * 互斥：subscribe、assign
+   * 消费确认
+      * 在异步模式下，commited offset 要落后于 consume offset。
+      * 加入 consumer 挂了重启，那么它将从 commited offset 位置开始消费，而不是 consumer offset 位置。这也就意味着有可能重复消费。
+      * 3 种 ack 策略
+         1. 自动且周期性的 ack：enable.auto.commit=true，auto.commit.interval.ms=1000
+         2. consumer.commitSync();// 手动同步 commit
+         3. consumet.commitAsync();// 手动异步 ack
+   * Exactly Once : 自己保存 offset
+      * kafka 只保证不漏消息，即 at least once，而不保证消息不重复。
+      * 重复发送：客户端解决不了，需要服务器判重，代价太大
+      * 重复消费：有了上面的 commitSync()，可以每处理完 1 条消息，就发送一次 commitSync，这样是否就解决了 重复消费了呢？？ 答案是否定的。
+      * 需要自己保存 commited offset，而不是依赖 Kafka 的集群保存的 commited offset，把消息处理和 offset 的保存做成一个原子操作。
+         1. 通过 关系数据库，通过事务存取。consumer 挂了，重启，消息也不会重复消费。
+         2. 搜索引擎：把 offset 和数据一起，建立索引
+      * 自己保存 offset 需要做：
+         1. enable.auto.commit=false
+         2. 每次取道消息，存储 offset
+         3. 下次重启通过 consumer.seek 函数定位到自己的 offset
+         
 Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat实现原理
    * https://blog.csdn.net/chunlongyu/article/details/52791874
    * 单线程的Consumer
@@ -178,21 +317,22 @@ Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat�
          3. SGR (SyncGroupRequest)，发请求给Coordinator（leader 进行分配必将结果带给Coordinator），Coordinator返回分配结果给followers
             * partition的分配策略和分配结果是由client决定的
                * 没有在Coordinator做这个事情，是从灵活性角度考虑，如果让server分配，一旦需要新的策略就需要重新部署server集群
-    * rebalance机制
-       * Rebalance的条件：
-          1. 有新的consumer加入
-          2. 旧的的consumer挂掉
-          3. Coordinator挂掉了
-          4. topic的partition增加了
-          5. consumer调用unsubscribe(),取消订阅了
-       * 当consumer检测到需要进行Rebalance，所有的consumer就需要走上面的流程，进行步骤二 + 步骤三
-    * heartbeat的实现
-       * consumer通过这个知道需要进行Rebalance
-       * 每个consumer定期往Coordinator发送heartbeat消息，一旦Coordinator返回ILLEAL_GENERATION，就说明之前的group无效，需要Rebalance
-       * HeartBeatRequest 是放在delay queue中的
-       * rebalance 检测
-          * 将rejoinNeeded设置为true
-    * failover
+   * rebalance机制
+      * Rebalance的条件：
+         1. 有新的consumer加入
+         2. 旧的的consumer挂掉
+         3. Coordinator挂掉了
+         4. topic的partition增加了
+         5. consumer调用unsubscribe(),取消订阅了
+      * 当consumer检测到需要进行Rebalance，所有的consumer就需要走上面的流程，进行步骤二 + 步骤三
+   * heartbeat的实现
+      * 有一个单独的 heartbeat 线程
+      * consumer通过这个知道需要进行Rebalance
+      * 每个consumer定期往Coordinator发送heartbeat消息，一旦Coordinator返回ILLEAL_GENERATION，就说明之前的group无效，需要Rebalance
+      * HeartBeatRequest 是放在delay queue中的
+      * rebalance 检测
+         * 将rejoinNeeded设置为true
+   * failover
        * consumer和Coordinator都有可能挂掉，需要双方互相检测
        * consumer认为Coordinator挂掉，从步骤1开始，重新dicover Coordinator，然后join group + sync group
        * Coordinator认为consumer挂掉，通知其他剩下的consumer，然后进行joinGroup + sync group
