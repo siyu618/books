@@ -528,6 +528,25 @@ Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核
      2. leader处理ProduceRequest请求和follower同步日志，这两个事情是并行的。leader不会等待两个follower同步该消息，再处理下一个。
      * 每一个ProduceRequest对于一个该请求写入日志是的requestOffset。判断该消息是否同步完成，只要每个replica的LOE>=reqeustOffset就可以了，并不需要完全相等
 
+  * ReplicaManager 核心数据结构
+     * ReplicaManager
+        * private val allPartitions = new Pool[TopicPartition, Partition]； 该节点上所有的 partition
+     * Partition：每个 Partititon 内部存储了所有的 replica， 也就是 ISR
+        * @volatile var leaderReplicaIdOpt ； 这个 partition 的 leader
+        * @volatile var inSyncReplicas：Set[Replica]; 除了这个 leader 之外其他所有或者的 follower 集合
+     * Replica
+        * @volatile private[this] var logEndOffsetMetadata；// 该 Replica 从当前 leader 那 fetch 消息的最近的 offset，简称 LEO
+  * 样例： 假设 t0p1为例，b2 为 leader， b3、b5 作为 follower
+     * b2 的 SocketServer 收到 producer 的 ProduceRequest， 把请求交给 ReplicaManager 处理， ReplicaManager 调用自己的 appendMessage 函数，将消息存到本地日志。
+     * ReplicaManager 生成一个 DelayedProduce 对象放入 DelayedProducerPurgatory 中，等待 follower 来把请求 pull 到自己的机器上
+     * 2 个 follower 会跟 consumer 一样，发送 FetchRequest 请求到 SocketServer， ReplicaManager 调用自己的 fetchMessages 函数返回日志，同时更新两个 follow 的 LEO，并且判断 DelayedProduce 是否可以 complete。如果可以则发送 ProduceResponse。
+  * 关键点
+     1. 每个 DelayedProduce 内部包含一个 ProduceResponseCallback 函数，当 complete 之后，该 callback 也被回调，也就处理完成了 ProduceReqeust
+     2. leader 处理 ProduceReqeust 请求和 follower 的日志同步，这两个事情是同步的。leader 并不会等待 2 个 follower 同步完成之后才处理下一个。
+     3. 每个 ProducerRequest 对于一个该请求写入日志时的 reqeustOffset。判断该请求是否完成，只要每个 replcia 的 LEO >= reqeuestOffset 就可以了，不用完全相等。      
+  * 总结
+     * 分析了 ReplicaManager 处理 ProducerRequest 时候，消息的同步思路。还有一个需要注意的是超时的情况。 
+      
 Kafka源码深度解析－序列13 －Server核心组件之2(续)－ TimingWheel本质与DelayedOperationPurgatory核心结构
    * https://blog.csdn.net/chunlongyu/article/details/52971748
    * ReplicaManager内部的2个成员变量
