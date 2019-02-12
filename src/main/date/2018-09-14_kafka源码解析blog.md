@@ -442,7 +442,20 @@ Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原
       * kafka、dobbo都是使用这个client的，较为轻量级
       * 三个接口
          * IZkStateListener，IZkDataListener， IZkChildListener
-
+   * 集群管理的思路
+      * broker 的“生”与“死”
+         * 集群中的节点需要感知新增和减少 broker，通过监听 zkPath：/brokers/ids 节点
+      * Controller
+         * 减小 Zookeeper 的压力，同时降低分布式复杂度，引入中央控制器 Controller
+         * 通过 Zookeeper 选举出 Controller， 然后利用这个 Controller 控制其他的所有的 brokers 
+         * 将“分布式”的问题转化为“集中式”的问题
+      * Topic 与 Partition 的增加/删除
+         * 管理端（Admin/TopicCommand）把增加删除命令发送给 ZK，Controller 从 ZK 获得更新消息，Controller 再分发给相关的 broker
+   * IOITec ZKClient
+      * 比 Curator 更加轻量级
+      * session 监听：IZkStateListener
+      * 节点数据变化：IZkDataListener
+      * 子节点变化：IZkChildListener
 
 Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController选举过程/Failover与Resignation
    * https://blog.csdn.net/chunlongyu/article/details/52933947
@@ -462,7 +475,8 @@ Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController�
          2. 当session重连或者/controller节点被删除，则调用elect()函数，发起重新选举。在重新选举之前，先判断自己是否是就得Controller，如果是则先调用onRegistration退位
       * 两个关键回调
          * 新官上任 + 旧官退位
-
+   * 最新的代码和这里的实现有差异（2018-08-30 trunk 分支的代码）
+   
 Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核心数据结构与Replica同步原理
    * https://blog.csdn.net/chunlongyu/article/details/52938947
    * ReplicaManger

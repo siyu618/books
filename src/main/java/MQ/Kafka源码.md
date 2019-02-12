@@ -116,6 +116,34 @@
    * RequestChannelRequest：
       * 调用 apis.handle(reqeust)
 
+### 5. kafkaController.startup()
+* zkClient 注册 StateChangeHandler
+* eventManager.put(Startup)
+   * zkClient.registerZNodeChangeHandlerAndCheckExistence(controllerChangeHandler)
+      * handleCreation: eventManager.put(ControllerChange)
+         * 如果之前是 leader ，而现在不是 leader，则退位：onControllerResignation
+            * zkClient 取消监听一些事件
+            * kafkaScheduler.shutdown
+            * etc
+      * handleDeletion: eventManager.put(Reelect)
+         * 如果之前是 leader 而现在不是了，则退位 onControllerResignation
+         * 选举 elect
+            * 如果其他 broker 已经成为 Controller 则退出
+            * 尝试创建临时节点
+               * 成功则上位：onControllerFailover
+                  * 1. 注册 controller epoch 和 变更监听器
+                  * 2. 增加 epoch
+                  * 3. 初始化 controller 的 context ： 当前 topics、活跃的 brokers、所有 partition 的 leader
+                  * 4. 启动 controller 的 channel manager
+                  * 5. 启动 replica 状态机
+                  * 6. 启动 分区 状态机
+               * 失败：
+                  * 创建节点失败，说明有其他 broker 上位，打日志
+                  * 上位失败则 退位：triggerControllerMove
+                     * onControllerResignation
+                     * deleteController: 删除节点
+      * handleDataChange: eventManager.put(ControllerChange)
+
 
 ## 2. Kafka APIS
 ### 1. handleProduceRequest: ApiKeys.PRODUCE
