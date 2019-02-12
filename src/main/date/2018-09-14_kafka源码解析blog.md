@@ -6,7 +6,7 @@
    * https://blog.csdn.net/chunlongyu/article/details/52525604   
 
 
-Kafka源码深度解析－系列1 －消息队列的策略与语义
+### 1. Kafka源码深度解析－系列1 －消息队列的策略与语义
    * https://blog.csdn.net/chunlongyu/article/details/52538311
    * 关键概念：
       * topic: 逻辑的数据队列
@@ -32,7 +32,7 @@ Kafka源码深度解析－系列1 －消息队列的策略与语义
          * exactly once：真正做到不重不漏，exactly once，是很困难的，需要 broker、producer、consumer 和 业务方 的配合。
          * kafka 保证不漏，就是 at least once
 
-Kafka源码深度解析－序列2 －Producer －Metadata的数据结构与读取、更新策略
+### 2. Kafka源码深度解析－序列2 －Producer －Metadata的数据结构与读取、更新策略
    * https://blog.csdn.net/chunlongyu/article/details/52622422
    * 多线程异步发送模型
       * 基本思路：发送的时候，KafkaProducer 将消息放入本地消息队列 RecordAccumulator，然后一个后台的线程 Sender 不断循环，将消息发送给 Kafka 集群。
@@ -124,7 +124,7 @@ Kafka源码深度解析－序列2 －Producer －Metadata的数据结构与读�
       * 更新的时候，是从 metadata 中保存的所有 Node 或者说是 broker 中选择负载最小的，向其发送 MetadataReqeust 请求，获取新的 Cluster 对象。
 
 
-Kafka源码深度解析－序列3 －Producer －Java NIO
+### 3. Kafka源码深度解析－序列3 －Producer －Java NIO
    * https://blog.csdn.net/chunlongyu/article/details/52636762
    * epoll
       * LT : 水平触发（条件触发），读缓冲区只要非空就一直触发读事件；写缓冲区不满就一直触发写事件
@@ -196,7 +196,7 @@ Kafka源码深度解析－序列3 －Producer －Java NIO
 
       
         
-Kafka源码深度解析－序列4 －Producer －network层核心原理
+### 4. Kafka源码深度解析－序列4 －Producer －network层核心原理
    * https://blog.csdn.net/chunlongyu/article/details/52651960
    * network 层的分层架构
       * 客户端：RecordAccumulator、KafkaProducer、Sender
@@ -240,7 +240,7 @@ Kafka源码深度解析－序列4 －Producer －network层核心原理
          1. 不能是 connecting 状态，不许是 disconnected
          2. 重连不能太频繁  
          
-Kafka源码深度解析－序列5 －Producer －RecordAccumulator队列分析
+### 5. Kafka源码深度解析－序列5 －Producer －RecordAccumulator队列分析
    * https://blog.csdn.net/chunlongyu/article/details/52704213
    * batch 发送
       * Record， RecordAccumulator
@@ -253,7 +253,7 @@ Kafka源码深度解析－序列5 －Producer －RecordAccumulator队列分析
    * 为什么是 Dequeue
       * 为了处理发送失败、重试的问题，此时顺序就不能保证了。
       
-Kafka源码深度解析－序列6 －Consumer －消费策略分析https://blog.csdn.net/chunlongyu/article/details/52791874 
+### 6. Kafka源码深度解析－序列6 －Consumer －消费策略分析https://blog.csdn.net/chunlongyu/article/details/52791874 
    * https://blog.csdn.net/chunlongyu/article/details/52663090   
    * comsumer group 两种模式
       * 负载均衡模式：多个consumer从属于一个group，一个topic的partition均匀的分配到各个consumer上
@@ -300,7 +300,7 @@ Kafka源码深度解析－序列6 －Consumer －消费策略分析https://blog.
          2. 每次取道消息，存储 offset
          3. 下次重启通过 consumer.seek 函数定位到自己的 offset
          
-Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat实现原理
+### 7. Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat实现原理
    * https://blog.csdn.net/chunlongyu/article/details/52791874
    * 单线程的Consumer
       * KafkaProducer 是线程安全的，同时其内部有一个Sender，开了一个后台线程，不断从队列取消息进行发送
@@ -337,7 +337,7 @@ Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat�
        * consumer认为Coordinator挂掉，从步骤1开始，重新dicover Coordinator，然后join group + sync group
        * Coordinator认为consumer挂掉，通知其他剩下的consumer，然后进行joinGroup + sync group
 
-Kafka源码深度解析－序列8 －Consumer －Fetcher实现原理与offset确认机制
+### 8. Kafka源码深度解析－序列8 －Consumer －Fetcher实现原理与offset确认机制
    * https://blog.csdn.net/chunlongyu/article/details/52796639
    * offset 初始化 - 手动指定 vs. 自动指定
       * 手动：seek（topicPartition，offset）
@@ -373,7 +373,7 @@ Kafka源码深度解析－序列8 －Consumer －Fetcher实现原理与offset确
        
       
       
-Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构分析
+### 9. Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构分析
    * https://blog.csdn.net/chunlongyu/article/details/52806408
    * 两种订阅策略
       * 手动：assign
@@ -428,7 +428,7 @@ Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构�
       * 手动指定初始 offset（seek） VS. 自动获取初始 offset（OffsetFetchReqeust）
       * 手动消费确认 VS. 自动消费确认（AutoCommitTask）     
 
-Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原理
+### 10. Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原理
    * https://blog.csdn.net/chunlongyu/article/details/52872281
    * broker的生与死
       * zk中/brokers/ids/xxx
@@ -457,7 +457,7 @@ Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原
       * 节点数据变化：IZkDataListener
       * 子节点变化：IZkChildListener
 
-Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController选举过程/Failover与Resignation
+### 11. Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController选举过程/Failover与Resignation
    * https://blog.csdn.net/chunlongyu/article/details/52933947
    * 在sever的启动函数中，可以看到以下几大核心组件
       1. socketServer + KafkaApis前者接受所有网络请求， 后者处理请求
@@ -477,7 +477,7 @@ Kafka源码深度解析－序列11 －Server核心组件之1－KafkaController�
          * 新官上任 + 旧官退位
    * 最新的代码和这里的实现有差异（2018-08-30 trunk 分支的代码）
    
-Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核心数据结构与Replica同步原理
+### 12. Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核心数据结构与Replica同步原理
    * https://blog.csdn.net/chunlongyu/article/details/52938947
    * ReplicaManger
 ``` java
@@ -531,7 +531,7 @@ Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核
   * ReplicaManager 核心数据结构
      * ReplicaManager
         * private val allPartitions = new Pool[TopicPartition, Partition]； 该节点上所有的 partition
-     * Partition：每个 Partititon 内部存储了所有的 replica， 也就是 ISR
+     * Partition：每个 Partition 内部存储了所有的 replica， 也就是 ISR
         * @volatile var leaderReplicaIdOpt ； 这个 partition 的 leader
         * @volatile var inSyncReplicas：Set[Replica]; 除了这个 leader 之外其他所有或者的 follower 集合
      * Replica
@@ -542,12 +542,12 @@ Kafka源码深度解析－序列12 －Server核心组件之2－ReplicaManager核
      * 2 个 follower 会跟 consumer 一样，发送 FetchRequest 请求到 SocketServer， ReplicaManager 调用自己的 fetchMessages 函数返回日志，同时更新两个 follow 的 LEO，并且判断 DelayedProduce 是否可以 complete。如果可以则发送 ProduceResponse。
   * 关键点
      1. 每个 DelayedProduce 内部包含一个 ProduceResponseCallback 函数，当 complete 之后，该 callback 也被回调，也就处理完成了 ProduceReqeust
-     2. leader 处理 ProduceReqeust 请求和 follower 的日志同步，这两个事情是同步的。leader 并不会等待 2 个 follower 同步完成之后才处理下一个。
+     2. leader 处理 ProduceRequest 请求和 follower 的日志同步，这两个事情是同步的。leader 并不会等待 2 个 follower 同步完成之后才处理下一个。
      3. 每个 ProducerRequest 对于一个该请求写入日志时的 reqeustOffset。判断该请求是否完成，只要每个 replcia 的 LEO >= reqeuestOffset 就可以了，不用完全相等。      
   * 总结
      * 分析了 ReplicaManager 处理 ProducerRequest 时候，消息的同步思路。还有一个需要注意的是超时的情况。 
       
-Kafka源码深度解析－序列13 －Server核心组件之2(续)－ TimingWheel本质与DelayedOperationPurgatory核心结构
+### 13. Kafka源码深度解析－序列13 －Server核心组件之2(续)－ TimingWheel本质与DelayedOperationPurgatory核心结构
    * https://blog.csdn.net/chunlongyu/article/details/52971748
    * ReplicaManager内部的2个成员变量
 ```java
@@ -670,8 +670,54 @@ private[timer] class TimerTaskEntry(val timerTask: TimerTask) {
    * TimingWheel的本质
      * DelayedQueue
      * 刻度盘的层次：currentTime
+   * DelayedOperationPurgatory  完成两个重要的功能
+      * check DelayedProduce 的 complete 条件，如果条件满足（也就是所有的（在 ISR 中的所有）replica 完成同步消息），则调用 DelayOperation 的 onComplete 函数
+      * 实现超时机制。
+   * ReplicaManager 内部的两个成员变量
+      * var delayedProducePurgatory = new DelayedOperationPurgatory\[DelayedProduce\](purgatoryName = "Produce", config.brokerId, config.producePurgatoryIntervalRequests)
+         * 每来一个 ProduceRequest，写入本地之后，就会生成一个 DelayedProduce 对象，放入 delayedProducePurgatory 中，之后这个对象，也么在处理 FetchRequest 请求的时候被 complete，要么在 purgatory 内部超时
+      * var delayedFetchPurgatory = new DelayedOperationPurgatory\[DelayedFetch\](purgatoryName = "Fetch", config.brokerId, config.producePurgatoryIntervalRequests)
+   * DelayedOperationPurgatory      
+      * 有两个核心部件
+         * 1. watches 的 ConcurrentHashMap
+         * 2. Timer：SystemTimeer
+            * delayQueue
+            * timeWheel
+      * DelayedProduce 有两个角色
+         * 1. DelayedOperation
+         * 2. TimeTask
+      * 每当处理一个 ProduceRequest 就会生成一个 DelayedProduce 对象加入到 Watches 中，同时它也会作为一个 TimeTask 加入到 Timer 中。 最后的 DelayedProduce 可能被接下来的 FetchRequest 满足，也可能在 Timer 中超时，给客户端返回超时。如果是前者就需要调用 TimeTask.cancle， 把该任务从 Timer 中删除。
+   * Timer 的实现： TimingWheel
+      * 为什么需要 TimingWheel
+         * 在 Kafka 的场景中，基于二根堆实现的定时器，有两个缺点
+            * 1. 在应对服务器大规模请求中，Log(n) 的复杂度，还是不够高效
+            * 2. 另一个更大的问题是，DelayedQueue 不支持随机删除。
+         * 在旧版的 Kafka 中，因为被 complete 的请求不能及时从 delayQueue 中删除，导致Queue 吃完 JVM 内存的情况。
+         * TimingWheel 的两个优点
+            * 1. Task 的加入和取出，时间复杂度都是 O(1)
+            * 2. 支持 Task 的随机删除
+   * Timer 的使用方式
+      * 一方面，调用者（DelayedOperationPurgatory）不断调用 timer.add 函数加入新的 task；
+      * 一方面有一个外部的线程 ExpiredOperationReaper 不断调用 timer.advanceClock 函数来驱动整个 timer
+      * 同时，当某一个 TimeTask 到期之后，不是由 Timer 直接执行次 TimeTask，而是交由一个 executor 来执行所有过期的 TimeTask。之所以这么做，是因为不能让 TimeTask 的执行阻塞 Timer                本身的进度。
+      * 总结：这里有两个外部线程，一个驱动 Timer，一个 executor 专门执行过期的 Task。它们都是 DelayedOperationPurgatory 的内部变量。
+   * Timer 的内部结构
+      * Timer 是最外层类，表示一个定时器。其内部有一个 TimingWheel 对象，TimingWheel 是有层次结构的，每个 TimingWheel 都是有 parent TimingWheel 的。（可以参照生活中的水表。）      
+      * TimingWheel 是有一个时间刻度盘，每个刻度盘上有个 TimeTask 的双向链表，称之为一个 bucket。同一个 bucket 里面的所有 Task，其过期时间都是相等的。因此，每个 bucket 有一个过期时间的字段。
+      * 除此之外，所有的 TimingWheel 都公用了一个 DelayQueue，这个 DelayQueue 存储了所有的 bucket，而不是 TimeTask。
+   * Timer 的 3 大核心功能
+      * 添加：把一个 TimeTask 加入 Timer
+      * 过期：时间到了，执行所有那些过期的 TimeTask
+      * 取消：时间未到，取消 TimeTask，把 TimeTask 删除。
+   * TimingWheel 的本质
+      * DelayedQueue：通过 DelayedQueue 来判断过期
+      * Hash 函数：TimingWheel 本质上是充当一个 hash 函数，通过 Task 的 expiration time，hash 出所在的 bucket。
+      * 刻度盘的层次：有 currentTime， advanceClock 函数会更新这个 currentTime
+   * 总结：
+      * Kafka 对于 TimingWheel 的用法是有改进的，结合了 DelayedQueue 
+      * 并不同于传统的 TimingWheel 直接用来做 Task 的过期逻辑判断，Kafka 用 DelayedQueue 判断过期，把 TimingWheel 当做 hash 函数来计算其在 DelayedQueue 中的 bucket 的位置。
 
-Kafka源码深度解析－序列14 －Server核心组件之3－SocketServer与NIO－ 1+N+M 模型
+### 14. Kafka源码深度解析－序列14 －Server核心组件之3－SocketServer与NIO－ 1+N+M 模型
    * https://blog.csdn.net/chunlongyu/article/details/53036414
    * 入口KafkaServer
 ```java
@@ -783,8 +829,25 @@ class KafkaRequestHandler(id: Int,
 ```
    * mute/unmute机制：消息有序性的保证
       * 在processor的run函数中，有一个核心机制：mute/unmute，该机制保证了消息会按照顺序处理，而不会乱序
-
-Kafka源码深度解析－序列15 －Log文件结构与flush刷盘机制
+   * 入口 KafkaServer
+      * SocketServer
+      * KafkaApis
+      * KafkaRequestHanderPool
+   * 1 + N + M 模型
+      * 1 个监听线程，负责监听所有新的 socket 连接
+      * N 个 IO 线程，负责对 socket 进行读写，N 一般等于 CPU 核数
+      * M 个 worker 线程，负责处理数据
+   * RequestChannel
+      * 每个 Processor 都有一个 ResponseQueue
+      * 一个 RequestQueue
+   * KafkaRequestHandlerPool 的 run 函数
+      * 该类就是封装 worker 线程的地方，新建了 M 个 worker 线程。
+      * 每个线程从 reqeustQueue 中取出 request，然后调用 KafkaApis 处理，处理的 response 再放回对应的 response queue      
+   * mute/unmute 机制：消息有序性的保证
+      * 就是每接收到一个 request，就会 mute 该 channel，不再接受请求；
+      * 等请求处理完毕，response 返回之后，再 unmute 该通道，接受下一个请求。
+      
+### 15. Kafka源码深度解析－序列15 －Log文件结构与flush刷盘机制
    * https://blog.csdn.net/chunlongyu/article/details/53784033
    * 每个topic_partition对应于一个目录
       * log.dir
@@ -799,3 +862,32 @@ Kafka源码深度解析－序列15 －Log文件结构与flush刷盘机制
    * 多线程写同一个log文件
       * lock
    * 数据文件分段 + 索引文件（稀疏索引）
+   * Log 文件结构
+   * 每个 topic_partition 对应一个目录：位于 log.dir 指定的目录中
+      * 文件名字是上一个 log 文件中，最后 1 条消息的 offset
+   * 文件 offset 作为 messageId
+      * 这个 offset 不是指消息在文件中的物理位置，而是一个顺序递增的逻辑编号。从 0 开始，每 append 一条消息，offset 增 1。
+   * index 文件
+      * 00000.index；
+      * 00000.log
+      * 00100.index
+      * 00100.log
+   * 根据 offset 定位文件位置，分为 3 步
+      * 1. 把所有的 kafka 文件名字排序，通过二分查找找到所在的 kafka 文件
+      * 2. 到对应的 index 文件里面，再次二分查找，找到对应的条目，也就是 offset 到 position 的映射。
+      * 3. 拿到这个 position，就直接定位到 kafka 文件中相应的位置，开始顺序扫描，然后就能得到实际的 position。
+      * PS： 这里的 index 是稀疏索引，每隔一个范围，存储一条消息的（offset，position）的对应关系。
+   * 变长消息存储
+      * 格式
+         * message length  ： 4 bytes （value = 1 + 4 + n）
+         * magic value： 1 byte
+         * crc ： 4 bytes
+         * payload：n bytes
+   * flush 刷盘机制
+      * fsync
+      * 配置参数
+         * log.flush.interval.messages : 多少条消息刷一次盘
+         * log.flush.interval.ms ： 隔多长时间刷一次盘
+         * log.flush.scheduler.interval.ms ： 周期性刷盘，缺省 3 s
+   * 多线程写同一个 log 文件
+      * 需要加锁        
