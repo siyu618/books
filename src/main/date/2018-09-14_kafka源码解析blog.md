@@ -340,7 +340,7 @@ Kafka源码深度解析－序列7 －Consumer －coordinator协议与heartbeat�
 Kafka源码深度解析－序列8 －Consumer －Fetcher实现原理与offset确认机制
    * https://blog.csdn.net/chunlongyu/article/details/52796639
    * offset 初始化 - 手动指定 vs. 自动指定
-      * 手动：seek（topicPattition，offset）
+      * 手动：seek（topicPartition，offset）
       * 自动：poll之前请求向Coordinator请求offset
    * fetcher核心流程
       * 步骤1：fetcher.initFetchers(cluster)
@@ -406,6 +406,27 @@ Kafka源码深度解析－序列9 －Consumer －SubscriptionState内部结构�
             private final String metadata; //额外字段，可以不用。比如客户端可以记录哪个client, 什么时间点做的这个commit
          }
       ```
+   * SubscriptionState
+      * Set<String> subscription; 该 consumer 订阅的所有的 topic
+      * Set<String> groupSubscription; 仅对 consumer leader 有用，该 consumer group 中所有 consumer 订阅的所有 topic 
+      * Set<TopicPartition> userAssignment; 策略 1：consumer 手动指定 partition 该字段非空；策略 2：consumer leader 指定，该字段为空； 策略 1 和 2 在该字段上互斥的
+      * Map<TopicPartition, TopicPartitionState> assignment; partition 分配好，该字段记录的每个 partition 的消费状态
+   * 两个 offset
+      * consumed offset：需要消费的 offset 
+      * commited offset：消费确认过的 offset
+      * SubscriptionState
+         * Map<TopicPartition, TopicPartitionState> assignment;
+      * TopicPartitionState
+         * Long position; 记录当前需要消费的 offset 。 **字段 1**
+         * OffsetAndMetadata commited；记录已经消费过的 offset **字段 2**
+      * OffsetAndMetadata
+         * long offset；
+      * **字段 1** 是在 Fetcher.fetchRecords 里面更新
+      * **字段 2** 是在手动 commit 或者自动 commit 之后更新
+   * 总结
+      * assign VS. subscribe 
+      * 手动指定初始 offset（seek） VS. 自动获取初始 offset（OffsetFetchReqeust）
+      * 手动消费确认 VS. 自动消费确认（AutoCommitTask）     
 
 Kafka源码深度解析－序列10 －Server入门－Zookeeper与集群管理原理
    * https://blog.csdn.net/chunlongyu/article/details/52872281

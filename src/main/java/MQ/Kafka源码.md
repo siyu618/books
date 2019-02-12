@@ -1,4 +1,3 @@
-
 ## 1. Kafka Server
 ### 1. Kafka Server 
 1. Kafka shutdown
@@ -23,7 +22,7 @@
       * 关闭 brokerTopicStats
       * brokerState 标记为 NotRunning
       * startupComplete.set(false)
-      * isShuttingDhown.set(false)
+      * isShuttingDown.set(false)
       * AppInfoParser.unregisterAppInfo(jmxPrefix, brokerId, metrics)
       * shutdownLatch.countDown()
 2. Kafka startup
@@ -108,7 +107,7 @@
          * addToCompletedReceives：将已经
    * processCompletedReceived()
    * processCompletedSends()
-   * processDisconnnected()
+   * processDisconnected()
 
 ### 4. requestHandler pool ： requestHandler
 1. 死循环 从 requestChannel 的 requestQueue 中获取 request
@@ -125,15 +124,15 @@
 3. 过滤出 未授权（unauthorizedTopicResponse） 和 不存在的（nonExistingTopicResponse） 和 可以正常处理的数据（authorizedRequestInfo）
 4. 定义 callback ：sendResponseCallback
    * 构建 response 对象，并加入 对应的 processor 的 responseQueue 中，并唤醒 selector
-5. 调用 replicaManager.appendRecords(timeout, requiredAcks, internalTopicsAllowed, isFromClinet=true, responseCallback = sendResponseCallback, recordConversionStatsCallback = processingStatsCallback)
+5. 调用 replicaManager.appendRecords(timeout, requiredAcks, internalTopicsAllowed, isFromClient=true, responseCallback = sendResponseCallback, recordConversionStatsCallback = processingStatsCallback)
    * 如果 acks 不合法（0，-1，1），构建 response 并调用回调函数
    * 否则
       1. 写入本地 appendToLocalLog(), 得到 localProduceResults
          * 拒绝不可写入的内部 topic，返回异常信息。
          * 获取 partition 信息，并判定是本地是否是 leader
-         * 将记录写入 leader ： partition.appendRecordsToLeader(records, isFromClinet = true, requiredAcks)
+         * 将记录写入 leader ： partition.appendRecordsToLeader(records, isFromClient = true, requiredAcks)
             * 写入本地 leaderReplica.log.get.appendAsLeader(records, leaderEpoch, isFromClient = true)
-               * append 到 active segment，并分配 offset：log.append(records, isFormclient, assignOffsets = true, leaderEpoch)
+               * append 到 active segment，并分配 offset：log.append(records, isFormClient, assignOffsets = true, leaderEpoch)
                   1. 获取新的 offset
                   2. 更新 epoch 缓存
                   3. 检查 记录的大小 是否超过 允许的最大的大小
@@ -155,7 +154,7 @@
                      * timeINdex.flush
                      * txnIndex.flush
             * 激活 follower 的 fetch ： replicaManager.tryCompleteDelayedFetch()
-            * 更新 highWatermark（所有relica中的 LEO 的最小值）
+            * 更新 highWatermark（所有 replica 中的 LEO 的最小值）
             * 如果 highWatermark 更新了，尝试结束一些 pending 的 request。（此时不需要获取 leaderIsrUpdateLock）
                * replicaManager.tryCompleteDelayedFetch()
                * replicaManager.tryCompleteDelayedProduce()
@@ -252,3 +251,25 @@
    * Stable：返回 metadata
       * completeAndScheduleNextHeartbeatExpiration
          * 完成此次 heartbeat，并调度下次 heartbeat            
+
+### 6. handleOffsetFetchRequest: ApiKeys.OFFSET_FETCH
+1. createResponse 
+   * 如果未授权直接返回
+   * 如果 header.apiVersion == 0，则从 Zookeeper 获取数据
+   * 否则 从 Kafka 获取 offset
+      * 如果 request 的 partitions 字段为空，groupCoordinator.handleFetchOffsets(offsetFetchRequest.groupId)
+         * groupManager.getOffsets : 不能返回 陈旧 的 offset
+            * 
+      * 否则 groupCoordinator.handleFetchOffsets(offsetFetchRequest.groupId, Some(authorizedPartitions))
+
+### 7. handleOffsetCommitRequest： ApiKeys.OFFSET_COMMIT
+1. 授权不合法，直接返回错误
+2. header.apiVersion === 0， 保存到 Zookeeper
+3. header.apiVersion > 0: groupCoordinator.handleCommitOffsets
+   * groupCoordinator.doCommitOffsets()
+      *  groupManager.storeOffsets: 写入到 replication log，然后放入 cache
+         * appendForGroup
+            * replicaManager.appendRecords ;// 落地
+            * putCacheCallback // 更新缓存
+            
+            
