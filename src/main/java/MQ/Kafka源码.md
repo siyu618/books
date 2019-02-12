@@ -197,99 +197,58 @@
          * 返回 logReadResult
    * 如果（请求不想等待 || 请求没有需要任何数据 || 有足够的数据来返回 || 出错了），则立即调用 responseCallback 
    * 否则，放入 delayedFetchPurgatory
-      
-###       
-      
-## Kafka Producer
-### Kafka Producer
-1. 线程安全，建议是用单个 producer       
-   * metadata: 存储 topic 的数据
-   * accumulator：存储发送的记录，RecordAccumulator
-   * client：NetworkClinet
-   * sender：Sender
-      * kafkaClient
-      * metadata
-      * accumulator
-   * ioThread(this.sender).start
-   
-2. KafkaProducer.send(ProducerRecord<K,V> record, Callback callback)
-   * interceptedRecord = this.interceptors.onsend(record)
-   * doSend(interceptedRecord, callback)
-      * 如果 producer 关闭就退出
-      * 获取 topic 对应的 metadata：waitOnMetadata（）
-      * 序列化 key 和 value
-      * 计算 record 对应的 partition：partition（）
-         * partitioner.partition(record.topic, record.key(), serializedKey, record.value(), serializedValue, cluster)
-            * keyValue == null, 调用 nextValue(topic) % numPartitions
-            * keyValue != null, Utils.murmur2(keyBytes) % numPartitions
-      * 估算 record 的大小，如果超出则抛出异常
-      * 加入到队列：accumulator.append(tp, timestamp, serializedKey, serializedValue, headers, interceptCallback, remainingWaitMs);
-      * 如果 batch 满或者有新的 batch 生成，唤醒 sender      
 
+### 3. handleFindCoordinatorRequest: ApiKeys.FIND_COORDINATOR
+1. 如果授权失败，直接返回错误
+2. 获取 metadata
+   * 根据 groupid 获取内部 topic 对应的 partition =  groupCoordinator.partitionFor(findCoordinatorRequest.coordinatorKey) 
+      * groupManager.partitionFor(group)
+         * Utils.abs(groupId.hashCode) % groupMetadataTopicPartitionCount
+   * 获取内部 topic （"__consumed_offsets"）的 metadata ： getOrCreateInternalTopic
+   * partition 对应的 leader 就是该 group 的 coordinator
 
-## Kafka Consumer
-### Kafka Consumer
-1. 非线程安全
-2. KafkaConsuemr.poll(final Timer timer, final boolean includeMetadataInTimeout)
-   * 获取锁// 单线程使用
-   * 如果没有订阅，则抛异常
-   * 拉取数据，直到超时
-      * 如果 includeMetadataInTimeout 为 true，首先调用 updateAssignmentMetadataIfNeeded(Timer timer)，如果返回 false，直接返回空集合
-         * coordinator.poll(timer) ： 确保知道 coordinator，并且 consumer 已经加入 group，和处理定期提交 offset
-            * 处理提交回调 invokeCompletedOffsetCommitCallbacks
-            * 如果是自动分配 partittion
-               * pollHeartbeat(): 更新 线程的更新时间，使得 AbstractCoordinator.HeartbeatThread 线程可以继续执行 heartbeat 操作
-               * 如果 coordinatorUnknown（）获取coordinator失败 同时 ensureCoordinatorReady 也失败 则返回 false
-                  * ensureCoordinatorReady().lookupCoordinator() : 向最小负载的机器发送请求以获取 coordinator 节点
-                  * 如果 rejoinNeededOrPending() 返回true
-                     * subscriptions.hasPatternSubscription()： 因为 初始的 metadata 获取和 初始的 rebalance 存在竞争，需要保证在初始的 joining 之前获取新的 metadata。这就需要我们首先获取集群中匹配 pattern 的 topic 数据。
-                        * 获取 metadata
-                  * ensureActiveGroup() : 确保 group is active， joined and synced
-                     * ensureCoordinatorReady：再其次确保 group ready
-                     * startHeartbeatThreadIfNeeded: 启动 heartbeat 线程
-                     * joinGroupIfNeeded() : 加入 group ，而不启动 heartbeat 线程
-                        * rejoinNeededOrPending ： 如果需要加入或者有 pending 的请求
-                           * 确保 coordinator 可用
-                           * onJoinPrepare（）：提交之前的 offset，并且清理 
-                              * maybeAutoCommitOffsetsSync ： 先提交 commited offsets 如果 自动提交开启的话。
-                           * initiateJoinGroup(): 
-                              * 禁用 heartbeat 线程
-                              * sendJoinGroupRequest() : 发送 JGR & SGR
-                                 * JoinGroupResponseHandler
-                                    * 如果返回是 leader： onJoinLeader
-                                       * performAssignment：执行分配
-                                          * 设置为 leader = true
-                                          * 监控所有的 topic
-                                          * 执行分配：RangeAssigner、RoundRobinAssigner、StickyAssigner
-                                       * sendSyncGroupRequest ：向 coordinator 返回分配结果（非空结果）
-                                          * SyncGroupResponseHandler
-                                             * 保存分配结果
-                                    * 否则是 follower： onJoinFollower
-                                       * sendSyncGroupRequest：返回分配结果（空结果）
-                             * 激活 heartbeat 线程
-            * 否则是手动分配则等待 metadata
-               * 如果没有 ready 的 nodes，则 等待 metadata
-            * maybeAutoCommitOffsetsAsync ： 异步提交 commited offset
-               * doAutoCommitOffsetsAsync
-         * 更新 fetch position：updateFetchPositions(Timer timer)
-      * 调用并等待 updateAssignmentMetadataIfNeeded 返回true
-      * pollForFetches：fetch 数据，并且更新 consumed position
-         * fetcher.fetchedRecords() 如果非空，则返回
-            * parseCompletedFetch（）： 从 completedFetches 中获取数据并放到 nextInLineRecords 中
-               * 更新 subscriptions
-            * 从 nextInlineRecords 中抽取 record 放入 map fetched 中，并更新 remaining count
-            * 如此循环直到获得足量的数据 或者 没有数据可以获取
-            
-         * 发送请求获取数据：fetcher.sendFetches(); 请求不重发
-            * prepareFetchRequests（）： 构建请求
-            * client.sendRequest(), 注册回调函数 RequestFeatureListener
-               * 将返回的结果加入到 completedFetches 中
-         * 如果 coordinator 需要 rejoin 则直接返回空
-         * return fetcher.fetchedRecords();
-      * 如果拉去数据非空需要在返回数据之前，可以发送下次获取数据请求，因为已经提交了 consumed offset。
-      * 返回结果：需要经过 interceptors 处理
-   * 释放锁
-
-      
-      
-             
+### 4. handleJoinGroupRequest: ApiKeys.JOIN_GROUP
+1. 授权失败直接返回错误
+2. 由 groupCoordinator 来处理 join-group 请求： groupCoordinator.handleJoinGroup
+   * 异常情况直接返回错误
+   * 如果 group 不在 cache 中就加入到 cache 中： groupManager.addGroup()
+   * doJoinGroup
+      * 根据 group.currentState 处理
+         * Dead：返回错误
+         * PreparingRebalance：
+            * memberId 不存在则 addMemberAndRebalance
+               * group.add ： 第一个加入的 client 被设置为 leader
+               * maybePrepareRebalance
+                  * 如果有成员在异步等待，取消它们并同时它们 rejoin：resetAndPropagateAssignmentError
+            * 否则 updateMemberAndRebalance
+               * updateMember：
+               * maybePrepareRebalance
+         * CompletingRebalance               
+            * memberId 不存在则 addMemberAndRebalance
+            * 否则 
+               * 如果是 leader ：
+               * 否则
+                  * 如果 protocol 匹配
+                     * 返回结果，对于 leader 需要返回 group 的 currentMemberMetadata，对于 follower 返回空。 
+                  * updateMemberAndRebalance
+         * Empty | Stable
+            * memberId 不存在则 addMemberAndRebalance
+            * 否则 
+               * 如果是 leader
+                  * updateMemberAndRebalance
+               * 否则即 follower
+                  * 返回结果
+           
+### 5. handleSyncGroupRequest: ApiKeys.SYNC_GROUP
+1. 如果 memberId 不存在，返回 UNKNOWN_MEMBER_ID 错误
+2. 如果 generationId 不匹配，返回 ILLEAGLE_GENERATION 错误
+3. 查看 group.currentState
+   * Empty | Dead : 返回 UNKNOWN_MEMBER_ID 错误
+   * PreparingRebalance ： 返回 REBALANCE_IN_PROGRESS 错误
+   * CompletingRebalance： 
+      * 如果是 leader ，将 state 落地： groupManager.storeGroup
+         * appendForGroup
+            * replicaManager.appendRecords // 落盘
+   * Stable：返回 metadata
+      * completeAndScheduleNextHeartbeatExpiration
+         * 完成此次 heartbeat，并调度下次 heartbeat            
