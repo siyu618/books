@@ -320,7 +320,7 @@
                * localReplica.log.read() // log 是 kafka.cluster.Log
                   * segment.read(startOffset
                      * 返回 FetchDataInfo 
-                        * fetchOffsetMetadta: LogOffsetMetadata,
+                        * fetchOffsetMetadata: LogOffsetMetadata,
                         * records:Records
                            * **writeTo() ==>  bytesTransferred = tl.transferFrom(channel, position, count); ==>  fileChannel.transferTo(position, count, socketChannel)**
                         * firstEntryIncomplete:Boolean
