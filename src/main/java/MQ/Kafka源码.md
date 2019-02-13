@@ -300,4 +300,51 @@
             * replicaManager.appendRecords ;// 落地
             * putCacheCallback // 更新缓存
             
+
+### 8. [Kafka Zero-Copy 使用分析](https://www.jianshu.com/p/d47de3d6d8ac)
+* 前言
+   * NIO
+   * Zero Copy
+   * 磁盘顺序写
+   * Queue 数据结构的极致使用
+* Kafka 在什么场景下是用 Zero Copy
+   * 消费消息， Fetch。
+   * Consumer 以及 Follower 从 leader partition 拉取数据的时候。 
+   * API： java.nio.FileChannel.transferTo(long position, long count, WritableByteChannel target)
+* Kafka 使用 Zero-Copy 的流程分析
+   * 数据成成
+      * 1. KafkaApis.handle(): case ApiKeys.FETCH => handleFetchRequests(request)      
+         * replicaManager.fetchMessage()
+         * val logReadResults = readFromLog()
+            * val result = readFromLocalLog( // 返回  Seq[(TopicPartition, LogReadResult)]
+               * localReplica.log.read() // log 是 kafka.cluster.Log
+                  * segment.read(startOffset
+                     * 返回 FetchDataInfo 
+                        * fetchOffsetMetadta: LogOffsetMetadata,
+                        * records:Records
+                           * **writeTo() ==>  bytesTransferred = tl.transferFrom(channel, position, count); ==>  fileChannel.transferTo(position, count, socketChannel)**
+                        * firstEntryIncomplete:Boolean
+                        * abortedTransactions
+         * processResponseCallback()
+            * sendResponse(request, Some(createResponse(xxx), Some(updateConversionsStats))
+               * requestChannel.sendResponse(response)
+                  * processor.enqueueResponse(response)
+                     * responseQueue.put(response)
+   * 数据发送: Processor.run()
+      * 注册发送：processNewResponses()     
+         * Processor.selector.send(response)
+            * channel.setSend(send)
+               * this.send = send
+               * 注册写 this.transportLayer.addInterestOps(SelectionKey.OP_WRITE);
+      * 实际发送：poll()
+         * pollSelectionKeys()
+            * send = channel.write(); // Send 为 MultiRecordsSend
+               * KafkaChannel.send(send)
+                  * send.writeTo(transportLayer)
+                     * 几层调用到：FileRecords 的 writeTo
+                        * PlaintextTransportLayer.transferFrom(channel, position, count)
+                           * fileChannel.transferTo(position, count, socketChannel); **Zero-Copy happens here**
+
+
+
             
