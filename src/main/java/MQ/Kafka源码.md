@@ -316,7 +316,7 @@
       * 1. KafkaApis.handle(): case ApiKeys.FETCH => handleFetchRequests(request)      
          * replicaManager.fetchMessage()
          * val logReadResults = readFromLog()
-            * val result = readFromLocalLog( // 返回  Seq[(TopicPartition, LogReadResult)]
+            * val result = readFromLocalLog( // 返回  Seq\[(TopicPartition, LogReadResult)]
                * localReplica.log.read() // log 是 kafka.cluster.Log
                   * segment.read(startOffset
                      * 返回 FetchDataInfo 
@@ -325,11 +325,21 @@
                            * **writeTo() ==>  bytesTransferred = tl.transferFrom(channel, position, count); ==>  fileChannel.transferTo(position, count, socketChannel)**
                         * firstEntryIncomplete:Boolean
                         * abortedTransactions
-         * processResponseCallback()
-            * sendResponse(request, Some(createResponse(xxx), Some(updateConversionsStats))
-               * requestChannel.sendResponse(response)
-                  * processor.enqueueResponse(response)
-                     * responseQueue.put(response)
+         * processResponseCallback(responsePartitionData: Seq\[(TopicPartition, FetchPartitionData)])
+              * 数据转化：Seq\[(TopicPartition, FetchPartitionData)] --> partitions ： LinkedHashMap[TopicPartition, FetchResponse.PartitionData[Records]] 
+              * 如果请求来自 follower
+                 * 数据转换 unconvertedFetchResponse:FetchResponse\[Records] = fetchContext.updateAndGenerateResponseData(partitions)
+                    * FetchResponse\[Records] 成员 LinkedHashMap<TopicPartition, PartitionData<T>> responseData 存放数据
+                       * PartitionData 里的 records 存放了实际取的数据
+                 * createResponse
+                    * 对 unconvertedFetchResponse 里面的 PartitionData 转换
+                    * 重新构建 response:FetchResponse
+                 * sendResponseExemptThrottle: sendResponse
+                    * 构建 responseSend = request.context.buildResponse(response)
+                    * 构建 SendResponse(request, responseSend, responseAsString, onCompleteCallback)
+                    * sendResponse(response)
+                       * requestChannel.sendResponse(response)
+                          * 获取对应的 processor，加入到其对应的 responseQueue 中 
    * 数据发送: Processor.run()
       * 注册发送：processNewResponses()     
          * Processor.selector.send(response)
