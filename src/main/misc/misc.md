@@ -2,12 +2,18 @@
 * [HTTP和HTTPS协议，看一篇就够了](https://blog.csdn.net/xiaoming100001/article/details/81109617)
 * [HTTPS原理和CA证书申请（满满的干货）](https://blog.51cto.com/11883699/2160032)
 
-### 探索推荐引擎内部的秘密
+### 探索推荐引擎内部的秘密 (旧)
 * [1. 推荐引擎初探](https://www.ibm.com/developerworks/cn/web/1103_zhaoct_recommstudy1/index.html)
 * [2. 深入推荐引擎相关算法 - 协同过滤](https://www.ibm.com/developerworks/cn/web/1103_zhaoct_recommstudy2/index.html?ca=drs-)
 * [3. 深入推荐引擎相关算法 - 聚类](https://www.ibm.com/developerworks/cn/web/1103_zhaoct_recommstudy3/index.html?ca=drs-)
 
-
+### 推荐系统（新）
+* [程序员破解推荐系统瓶颈，带来超百亿收入增量！](https://mp.weixin.qq.com/s/5X5PVhoAaVCp3q3gSY-Szw)
+   * 匹配召回
+      * 第一代：基于统计规则的协同滤波
+      * 第二代：基于向量化表达的全库搜索
+      * 第三代：基于 TDM（阿里使用）
+   * 预估排序：深度学习 
 
 ### 协同过滤
 * [[机器学习]推荐系统之协同过滤算法](https://www.cnblogs.com/baihuaxiu/p/6617389.html)
