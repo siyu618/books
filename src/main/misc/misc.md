@@ -78,3 +78,11 @@
    * 容错性
    * 可扩展性
 
+
+### 规则引擎
+* [几个常见规则引擎的简单介绍和演示](https://www.cnblogs.com/mshf521/p/7743580.html)
+   * Ilog JRules
+   * Drools
+   * Jess
+   * Visual Rules
+* [常用的规则引擎](https://www.open-open.com/project/tag/guize-yinqing.html)   
