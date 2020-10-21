@@ -1,4 +1,64 @@
-## Tech
+## 1. 软技能
+
+### 1. 思维方式（开放心态）
+* 以**客户**为中心，树立正确的技术观。（盲人摸象看到的是部分）
+   * 技术是成本中心。
+   * 技术的价值？ 移动、云计算、推荐系统（DAU 千万级别到亿级别的主力）
+* 成长思维，不自我设限
+   * 棍型人才 -> T 型人才 -> π 型人才 ->  柱型人才？
+* 正确地面对批评和挫折
+   * 这点很重要。
+   * **无我**。
+   * 成长最快的时候，是人处于最难受的是时候。如果非常轻松，很可能是没有任何的成长。
+      
+### 2. 关于思考
+1. 系统思考/金字塔原理
+   * [系统论](https://www.zhihu.com/question/21481914)
+   * [系统化思维导论](https://book.douban.com/subject/26298694/)
+   * [深度思考法](https://book.douban.com/subject/30409489/)
+   * [系统思维：复杂商业系统的设计之道（原书第3版）](https://book.douban.com/subject/25905681/)
+2. 复盘/批判性思维
+   * [原则](https://book.douban.com/subject/27608239/) 
+   * [复盘](https://book.douban.com/subject/27665436/)
+   * [思辨与立场](https://book.douban.com/subject/26872634/)
+3. 模型思维
+   * [模型思维](https://book.douban.com/subject/34893628/)
+
+### 3. 沟通
+* **以客户为中心，正确的抽象层次**
+* [舌功学](https://book.douban.com/subject/26913983/)
+* [高难度谈话](https://book.douban.com/subject/5913475/)
+* [非暴力沟通](https://book.douban.com/subject/3533221/)
+* [沟通的艺术](https://book.douban.com/subject/26275861/)
+
+### 4. 其他
+* [卓有成效的管理者](https://book.douban.com/subject/4020857/)
+* [OKR 工作法](https://book.douban.com/subject/27132072/)
+* [黑客与画家](https://book.douban.com/subject/6021440/)
+* [软技能](https://book.douban.com/subject/26835090/)
+* [软件开发者路线图](https://book.douban.com/subject/4924164/)
+* [成为技术领导者](https://book.douban.com/subject/26419762/)
+* [见识](https://book.douban.com/subject/27167992/)
+* [精益创业](https://book.douban.com/subject/10945606/)
+
+
+## 2. 业务
+### 1. 推荐系统
+* [深度学习推荐系统](https://book.douban.com/subject/35013197/)
+* [推荐系统实践](https://book.douban.com/subject/10769749/)
+   
+### 2. 计算广告
+* [计算广告](https://book.douban.com/subject/26596778/)
+   
+### 3. 画像建设
+* [特征工程入门与实践](https://book.douban.com/subject/33474864/)
+* [用户画像：方法论与工程化解决方案](https://book.douban.com/subject/34961590/)  
+ 
+### 4. 产品
+* [俞军产品方法论](https://book.douban.com/subject/34907971/)
+
+   
+## 3. Tech
 ### 1. 基础篇
 1. JAVA
    * 基础：[Java核心技术·卷 I](https://book.douban.com/subject/26880667/)、[Java核心技术·卷 II](https://book.douban.com/subject/27165931/)
@@ -35,7 +95,8 @@
 7. [软件系统架构：使用视点和视角与利益相关者合作](https://book.douban.com/subject/24530471/)
 8. [企业IT架构转型之道：阿里巴巴中台战略思想与架构实战](https://book.douban.com/subject/27039508/)
 9. [恰如其分的软件架构：风险驱动的设计方法](https://book.douban.com/subject/24872314/)
-
+10. [反应式设计模式](https://book.douban.com/subject/30417742/)
+   * AKKA
 
 ### 4. 大数据
 1. 三驾马车
@@ -51,9 +112,9 @@
 ### 5. 分布式/云服务
 1. 共识（Distributed consensus）：
    * [FLP Impossibility](https://www.the-paper-trail.org/post/2008-08-13-a-brief-tour-of-flp-impossibility/): [中文证明](https://danielw.cn/FLP-proof)
-   * PAXOS：Basic Paxos、Multiple Paxos
+   * [PAXOS](https://lamport.azurewebsites.net/pubs/paxos-simple.pdf)：Basic Paxos、Multiple Paxos
       * Chubby
-   * RAFT
+   * [RAFT](https://raft.github.io/)
       * [Etcd](https://etcd.io/)
    * ZAB
       * Zookeeper
@@ -70,14 +131,14 @@
    * [云原生](https://book.douban.com/subject/35069167/)
    * [Docker技术入门与实战（第2版）](https://book.douban.com/subject/28489095/)
 
-### 6. 底层基础知识
+### 6. 底层基础知识/安全
 1. [TCP/IP详解 卷1：协议（原书第2版）](https://book.douban.com/subject/26825411/)
 2. [计算机网络（第6版）](https://book.douban.com/subject/26176870/)
 3. [破坏之王：DDoS攻击与防范深度剖析](https://book.douban.com/subject/25870994/)
 4. [图解HTTP](https://book.douban.com/subject/25863515/)
 
 ### 7. 开发方法论
-0. [软件开发本质论](https://book.douban.com/subject/26928913/)
+0. [软件开发本质论](https://book.douban.com/subject/26928913/)：提供价值。
 1. [凤凰项目：一个IT运维的传奇故事（修订版）](https://book.douban.com/subject/34820436/)
 2. [DevOps精要：业务视角](https://book.douban.com/subject/35103584/)
 3. [持续交付2.0](https://book.douban.com/subject/30419555/)
@@ -87,31 +148,7 @@
 
 
 
-## 业务
-1. 推荐系统
-   * [深度学习推荐系统](https://book.douban.com/subject/35013197/)
-   * [推荐系统实践](https://book.douban.com/subject/10769749/)
-2. 计算广告
-   * [计算广告](https://book.douban.com/subject/26596778/)
-3. 画像建设
-   * [特征工程入门与实践](https://book.douban.com/subject/33474864/)
-   * [用户画像：方法论与工程化解决方案](https://book.douban.com/subject/34961590/)   
 
-## 软技能
-1. 管理
-   * [卓有成效的管理者](https://book.douban.com/subject/4020857/)
-   * [OKR工作法](https://book.douban.com/subject/27132072/)
 
-2. 沟通
-   * [舌功学](https://book.douban.com/subject/26913983/)
-   * [高难度谈话](https://book.douban.com/subject/5913475/)
-   * [非暴力沟通](https://book.douban.com/subject/3533221/)
-   * [沟通的艺术](https://book.douban.com/subject/26275861/)
-1. [黑客与画家](https://book.douban.com/subject/6021440/)
-2. [软技能](https://book.douban.com/subject/26835090/)
-3. [软件开发者路线图](https://book.douban.com/subject/4924164/)
-4. [成为技术领导者](https://book.douban.com/subject/26419762/)
-6. [见识](https://book.douban.com/subject/27167992/)
-7. 
 
 
