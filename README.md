@@ -6,6 +6,6 @@
    * [2016 list](/src/main/list/2016.read.list.md)
 
 ### 2. job realted
-   * [Job related](/src/main/list/job-related.md)
+   * [Job related](/src/main/list/job-related.md)：不定期更新
    
 
