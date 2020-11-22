@@ -145,6 +145,8 @@
 4. [DevOps：软件架构师行动指南](https://book.douban.com/subject/27021098/)
 5. [敏捷革命：提升个人创造力与企业效率的全新协作模式](https://book.douban.com/subject/27008697/)
 6. [领域驱动设计](https://book.douban.com/subject/26819666/)
+7. [实现领域驱动设计](https://book.douban.com/subject/25844633/)
+8. [领域驱动设计（Thoughtworks洞见）](https://read.douban.com/ebook/150512602/)
 
 
 
