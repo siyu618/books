@@ -27,7 +27,7 @@
    * [系统论（新老三论）](https://www.zhihu.com/question/21481914)
       * [耗散结构论](https://book.douban.com/subject/3201878/)
       * [耗散结构与协同学](https://book.douban.com/subject/2995121/)
-      * [复杂](https://book.douban.com/subject/6749832/)
+   * [复杂](https://book.douban.com/subject/6749832/)
 
 ### 3. 沟通
 * **以客户为中心，正确的抽象层次**
