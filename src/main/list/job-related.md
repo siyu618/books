@@ -111,6 +111,7 @@
    * MapReduce、Pig/Hive、Spark
 3. 流式计算
    * Spark、Flink
+   * [Streaming Systems](https://book.douban.com/subject/27080632/)
 4. [OLAP vs OLTP](https://cloud.tencent.com/developer/article/1544289)
 
 
