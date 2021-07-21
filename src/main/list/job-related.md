@@ -74,8 +74,9 @@
    * 性能优化：[Java性能优化权威指南](https://book.douban.com/subject/25828043/)、[性能之巅](https://book.douban.com/subject/26586598/)
    
 ### 2. 中间件篇
-1. Database
-   * SQL：[MySQL技术内幕](https://book.douban.com/subject/24708143/)
+1. Database：[数据库系统内幕](https://book.douban.com/subject/35078474/)
+   * SQL
+      * [MySQL 技术内幕：InnoDB存储引擎](https://book.douban.com/subject/24708143/)
    * NoSQL
       * MongoDB：[MongoDB 官网](https://www.mongodb.com/)
       * Redis：[Redis设计与实现](https://book.douban.com/subject/25900156/)、[Codis](https://github.com/CodisLabs/codis/)
@@ -127,8 +128,8 @@
 2. 复制存储（Replicated storage） 
    * [CAP](https://baike.baidu.com/item/CAP%E5%8E%9F%E5%88%99)：[谈谈FLP和CAP的关系](https://www.codenong.com/cs105841284/)
    * [BASE](https://juejin.im/post/6844903621495095304)
-   * 2PC
-   * 3PC 
+   * 2PC （目前使用较多，MySQL分布式事务使用的是这个）
+   * 3PC （存在数据不一致场景，目前还没看到哪个线上系统使用。）
    * TCC
    * NWR
 3. 云原生（Cloud Native）
