@@ -64,6 +64,12 @@
 
    
 ## 3. Tech
+### 0. LLM
+1. Course
+   * [Stanford course](https://stanford-cs324.github.io/winter2022/lectures/)
+   * [LangChain](https://docs.langchain.com/docs/)
+   * [MS-LLM](https://drive.google.com/drive/folders/1DaG956dKeA6M17o9lSqDP3V1-MuOrHlQ)
+
 ### 1. 基础篇
 1. JAVA
    * 基础：[Java核心技术·卷 I](https://book.douban.com/subject/26880667/)、[Java核心技术·卷 II](https://book.douban.com/subject/27165931/)
@@ -80,7 +86,9 @@
    * NoSQL
       * MongoDB：[MongoDB 官网](https://www.mongodb.com/)
       * Redis：[Redis设计与实现](https://book.douban.com/subject/25900156/)、[Codis](https://github.com/CodisLabs/codis/)
-   * NewSQL：[Google Spanner](https://cloud.google.com/spanner)、[TiDB](https://pingcap.com/)
+   * NewSQL
+      * [Google Spanner](https://cloud.google.com/spanner)
+      * [TiDB](https://pingcap.com/)
 
 3. MQ：Kafka、RocketMQ
    * [Kafka权威指南](https://book.douban.com/subject/27665114/)，可以看看源码
@@ -114,6 +122,8 @@
    * Spark、Flink
    * [Streaming Systems](https://book.douban.com/subject/27080632/)
 4. [OLAP vs OLTP](https://cloud.tencent.com/developer/article/1544289)
+5. 实时数仓
+   * [Iceberg, Hudi, DeltaLake](https://www.onehouse.ai/blog/apache-hudi-vs-delta-lake-vs-apache-iceberg-lakehouse-feature-comparison)
 
 
 ### 5. 分布式/云服务
