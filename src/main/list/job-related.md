@@ -69,7 +69,7 @@
    * [Stanford course](https://stanford-cs324.github.io/winter2022/lectures/)
    * [LangChain](https://docs.langchain.com/docs/)
    * [MS-LLM](https://drive.google.com/drive/folders/1DaG956dKeA6M17o9lSqDP3V1-MuOrHlQ)
-   * [LLM learn materials](https://github.com/ninehills/blog/issues/97)
+   * [LLM Survey](https://github.com/ninehills/blog/issues/97)
 
 ### 1. 基础篇
 1. JAVA
