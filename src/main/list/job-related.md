@@ -69,7 +69,10 @@
    * [Stanford course](https://stanford-cs324.github.io/winter2022/lectures/)
    * [LangChain](https://docs.langchain.com/docs/)
    * [MS-LLM](https://drive.google.com/drive/folders/1DaG956dKeA6M17o9lSqDP3V1-MuOrHlQ)
+2. LLM Survery & Application
    * [LLM Survey](https://github.com/ninehills/blog/issues/97)
+      * 流程：预训练 + 微调（指令微调 + 对齐微调）
+      * 应用：IR 增强，Prompt 工程
 
 ### 1. 基础篇
 1. JAVA
@@ -91,7 +94,7 @@
       * [Google Spanner](https://cloud.google.com/spanner)
       * [TiDB](https://pingcap.com/)
 
-3. MQ：Kafka、RocketMQ
+3. MQ：Kafka、RocketMQ、Pulsa
    * [Kafka权威指南](https://book.douban.com/subject/27665114/)，可以看看源码
    * [RocketMQ实战与原理解析](https://book.douban.com/subject/30246992/)
 
@@ -123,6 +126,13 @@
    * Spark、Flink
    * [Streaming Systems](https://book.douban.com/subject/27080632/)
 4. [OLAP vs OLTP](https://cloud.tencent.com/developer/article/1544289)
+   * OLAP: Mapreduce、Pig、Hive、Doris、StarRocks、Clickhouse、Presto/Trino
+      * 预计算
+      * MPP
+      * 存算分离：StarRocks
+   * OLTP
+      * TDSQL、OceanBase、TiDB
+
 5. 实时数仓
    * [Iceberg, Hudi, DeltaLake](https://www.onehouse.ai/blog/apache-hudi-vs-delta-lake-vs-apache-iceberg-lakehouse-feature-comparison)
 
@@ -147,7 +157,7 @@
    * [CNCF](https://www.cncf.io/)：这个概念体系包含的东西原来越多了。
    * [持续演进的Cloud Native：云原生架构下微服务最佳实践](https://book.douban.com/subject/30370644/)
    * [云原生](https://book.douban.com/subject/35069167/)
-   * [Docker技术入门与实战（第2版）](https://book.douban.com/subject/28489095/)
+   * [Docker技术入门与（第2版）](https://book.douban.com/subject/28489095/)
 
 ### 6. 底层基础知识/安全
 1. [TCP/IP详解 卷1：协议（原书第2版）](https://book.douban.com/subject/26825411/)
