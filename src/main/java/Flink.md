@@ -151,3 +151,25 @@
       * 3. 当这个节点收到了跟其他链接的输入流的所有屏障，便开始生成当前节点的一个快照。   
    * DAG VS. DCG
       * 对于 DCG，在接收到回向的屏障后，也生成当前的快照。
+
+### [Flink CDC](https://developer.aliyun.com/article/786600)
+* 1.x VS. 2.x
+   * 1.x 基于 Debuzium 实现，是单实例的，需要全局锁，同步慢
+      * 全局加锁
+      * 单实例，非并行
+      * 全量读取阶段不支持 checkpoint
+      * 分为两步骤： 全量阶段（查询当下全部数据）、增量阶段（消费binlog）
+   * 2.x 是基于 Netflix DBLog 无锁化改进，对于全量同步阶段是 多实例并行的，速度快
+     * 分为全量和增量阶段： 全量极端并行，增量阶段单实例
+     * 有checkpoint
+     * 无锁
+     * 流程
+        * 全量阶段：分 chunk ， 然后交由 sourceReader 读取
+           * 每个chunk 被并行处理
+           * 对于单个 chunk： a. 记录 lowmark， b. 查询该chunk 的数据到缓存，c. 记录 highmark， d. 消费 lowmark 到 highmark之间的binlog，e. 输出缓存中数据 f.返回 highmark
+           * 汇总所有的 chunk，准备 增量消费
+        * 增量阶段
+
+* CDC 种类
+   * 基于查询的 CDC
+   * 基于 binlog 的 CDC 
