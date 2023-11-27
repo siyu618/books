@@ -69,7 +69,7 @@
    * [Stanford course](https://stanford-cs324.github.io/winter2022/lectures/)
    * [LangChain](https://docs.langchain.com/docs/)
    * [MS-LLM](https://drive.google.com/drive/folders/1DaG956dKeA6M17o9lSqDP3V1-MuOrHlQ)
-2. LLM Survery & Application
+2. LLM Survey & Application
    * [LLM Survey](https://github.com/ninehills/blog/issues/97)
       * 流程：预训练 + 微调（指令微调 + 对齐微调）
       * 应用：IR 增强，Prompt 工程
@@ -94,13 +94,19 @@
       * [Google Spanner](https://cloud.google.com/spanner)
       * [TiDB](https://pingcap.com/)
 
-3. MQ：Kafka、RocketMQ、Pulsa
+2. Message Queue：Kafka、RocketMQ、Pulsa
    * [Kafka权威指南](https://book.douban.com/subject/27665114/)，可以看看源码
    * [RocketMQ实战与原理解析](https://book.douban.com/subject/30246992/)
-
-4. Zookeeper
+   * [深入理解Kafka：核心设计与实践原理](https://book.douban.com/subject/30437872/)
+      * 算是比较新的版本，使用层面上更加贴近实际。
+      * 如果深入还得看源码，这本书只是讲了一些基本的原理，但是没有深入到源码层面。
+      * 书中的延时队列的设计倒是可以参考一下。不过这块更是可以参考 RocketMQ 中最新的支持任意延时的延时队列的设计。
+3. Consensus: Paxos、ZooKeeper、Raft
    * [ZooKeeper:分布式过程协同技术详解](https://book.douban.com/subject/26766807/)
    * [从Paxos到Zookeeper](https://book.douban.com/subject/26292004/)
+   * [In Search of an Understandable Consensus Algorithm](https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14)
+      * 这个讲得更为清晰。
+      * 支持在线增加减少服务器实例：采用两阶段提交的方式，在每一个阶段确保过半机制。 
 
    
 ### 3. 架构篇
@@ -146,6 +152,7 @@
       * [Etcd](https://etcd.io/)
    * ZAB
       * Zookeeper
+     
 2. 复制存储（Replicated storage） 
    * [CAP](https://baike.baidu.com/item/CAP%E5%8E%9F%E5%88%99)：[谈谈FLP和CAP的关系](https://www.codenong.com/cs105841284/)
    * [BASE](https://juejin.im/post/6844903621495095304)
@@ -153,6 +160,7 @@
    * 3PC （存在数据不一致场景，目前还没看到哪个线上系统使用。）
    * TCC
    * NWR
+   
 3. 云原生（Cloud Native）
    * [CNCF](https://www.cncf.io/)：这个概念体系包含的东西原来越多了。
    * [持续演进的Cloud Native：云原生架构下微服务最佳实践](https://book.douban.com/subject/30370644/)
